@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Every daemon this configuration needs, filled in as each one is started and
 # watched by the supervision loop at the end. Kept here rather than derived
 # from the environment a second time: what was started is what has to stay up.

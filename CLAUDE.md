@@ -32,11 +32,11 @@ which is where contributor branches lived then.
 
 | Path | Role |
 | --- | --- |
-| `Dockerfile` | Debian base pin (`FROM debian:trixie-<date>-slim`), `apt-get full-upgrade` before the named packages and `apt-get autoremove --purge` after them (invariant 37), the conditional `postsrsd` install, the build-time deletion of `/etc/rsyslog.conf` and `/etc/postsrsd.secret`, the default `ENV` block, `COPY run healthcheck /root/`, `VOLUME`, `EXPOSE 25`, `HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["/root/healthcheck"]` and `CMD ["/root/run"]`. No `ENTRYPOINT`, no `ARG`. |
+| `Dockerfile` | Debian base pin (`FROM debian:trixie-<date>-slim`), `apt-get full-upgrade` before the named packages and `apt-get autoremove --purge` after them (invariant 37), the conditional `postsrsd` install, the build-time deletion of `/etc/rsyslog.conf` and `/etc/postsrsd.secret`, the default `ENV` block, `COPY run healthcheck /root/` and then `COPY LICENSE NOTICE LICENSE-COMMERCIAL.md /root/`, the OCI `LABEL`s including `org.opencontainers.image.licenses=AGPL-3.0-only` (which `ci.yml` has to repeat, see its row), `VOLUME`, `EXPOSE 25`, `HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["/root/healthcheck"]` and `CMD ["/root/run"]`. No `ENTRYPOINT`, no `ARG`. |
 | `run` | The entrypoint. Resolves `<NAME>_FILE` secrets, turns `POSTFIX_*`, `POSTFIXMASTER_*`, `POSTMAP_*`, `OPENDKIM_*`, `POSTSRSD_*`, `RSYSLOG_*`, `SASL_Passwds` and `POSTMASTER_ADDRESS` into config, starts the daemons, asks postfix for an SMTP greeting, then runs a `pgrep`-polling supervision loop. Nearly all behaviour lives here. |
 | `healthcheck` | `pgrep`s `master`, checks a listening socket for every `inet` service in `postconf -M`, then `rsyslogd` always, `opendkim`/`postsrsd` whenever the environment *or the artefacts start-up left behind* say so, and `saslauthd` when `SASL_Passwds` is set. |
 | `pytest.ini` | `addopts = -n auto --dist loadfile --maxprocesses 4` and one registered marker, `smoke`. No `testpaths`, no `filterwarnings`, no `xfail_strict`. |
-| `.dockerignore` | Keeps `.git`, `README.md`, `SECURITY.md`, `LICENSE`, `tests`, `pytest.ini`, `CLAUDE.md` and `.claude` out of the build context. |
+| `.dockerignore` | Keeps `.git`, `README.md`, `SECURITY.md`, `tests`, `pytest.ini`, `CLAUDE.md` and `.claude` out of the build context. Not `LICENSE`: the image has to carry it, so it has to reach the context. |
 | `.claude/settings.json` | Registers the `SessionStart` hook below. Nothing else. |
 | `.claude/hooks/session-start.sh` | Starts the docker daemon and installs `tests/requirements.txt`, because a Claude Code on the web container has neither and both gates need them. Guarded on `CLAUDE_CODE_REMOTE=true`, so a local checkout is untouched, and best-effort: a failed step explains itself on stderr and the hook still exits 0, so check stderr before believing a build or test failure. |
 | `tests/__init__.py` | Empty; makes `tests` a package, which is what lets `conftest.py` name plugins as `tests.fixtures.*` and lets modules do `from tests.helpers import …`. pytest therefore has to be run from the repo root. There is no `tests/fixtures/__init__.py`. |
@@ -51,20 +51,24 @@ which is where contributor branches lived then.
 | `tests/fixtures/smtp.py` | `smtplib` client against the shared `postfix` relay's mapped port 25. Function-scoped on purpose: the tests about rejected mail leave the connection broken. |
 | `tests/test_*.py` | `capabilities`, `ci`, `client_tls`, `config`, `defaults`, `dkim`, `healthcheck`, `image`, `lifecycle`, `logging`, `postmaster`, `qshape`, `ruleset`, `sasl`, `scan`, `secrets`, `sendmail`, `smtp`, `srs`, `upgrade`. Each has a row in the README's per-file table. |
 | `tests/img/postfix-logo.png` | The inline image `tests/test_sendmail.py` attaches, and compares byte for byte on the way out. |
-| `.github/workflows/ci.yml` | `name: ci`. Four jobs. `docker`, displayed as **Build Image**: buildx over `linux/amd64,linux/arm/v7,linux/arm64/v8`, GHA build cache, nothing pushed from a branch or a pull request and no tag named after the ref (invariant 38), and on `master` the tag it pushes is docker_meta's `sha-<commit>` — never `latest`, and on a tag ref nothing at all: a release builds nothing and instead points the version tags at the `sha-<commit>` image `master` already published and verified. `verify_published_amd64` and `verify_published_arm64`, displayed as **Verify Published Image (amd64)** and **(arm64)**: `needs: docker`, `master` only, each pulls by digest the image that was just pushed and runs `pytest -m smoke` against it — or the *whole* suite when the run is a `no-cache` rebuild, which `test.yml` never sees (invariant 36); the amd64 one first asserts the published manifest lists the three platforms the build asks for. `promote`, displayed as **Publish latest**: `master` only, `needs` all three, and points `latest` at that digest with `imagetools create` — after checking the commit is still `master`'s head, since master runs are not cancelled and two of them would otherwise race to write the tag. Spelled out rather than a matrix, for the reason test.yml gives — the job name is what a required status check and the auto-merge workflow match on — and for one of its own: a matrix expands `${{ matrix.arch }}` only in the runs it starts, so a pull request, where the `if` skips the job whole, reported the raw expression as the check's name. The workflow also takes a `workflow_dispatch` with one boolean input, `no-cache`, wired into both build steps — the remediation lever for an **Image Scan** finding, and the three jobs above verify and tag what it republishes. |
+| `.github/workflows/ci.yml` | `name: ci`. Four jobs. `docker`, displayed as **Build Image**: buildx over `linux/amd64,linux/arm/v7,linux/arm64/v8`, GHA build cache, a `docker_meta` that states `org.opencontainers.image.licenses=AGPL-3.0-only` itself because its labels win over the `Dockerfile`'s, nothing pushed from a branch or a pull request and no tag named after the ref (invariant 38), and on `master` the tag it pushes is docker_meta's `sha-<commit>` — never `latest`, and on a tag ref nothing at all: a release builds nothing and instead points the version tags at the `sha-<commit>` image `master` already published and verified. `verify_published_amd64` and `verify_published_arm64`, displayed as **Verify Published Image (amd64)** and **(arm64)**: `needs: docker`, `master` only, each pulls by digest the image that was just pushed and runs `pytest -m smoke` against it — or the *whole* suite when the run is a `no-cache` rebuild, which `test.yml` never sees (invariant 36); the amd64 one first asserts the published manifest lists the three platforms the build asks for. `promote`, displayed as **Publish latest**: `master` only, `needs` all three, and points `latest` at that digest with `imagetools create` — after checking the commit is still `master`'s head, since master runs are not cancelled and two of them would otherwise race to write the tag. Spelled out rather than a matrix, for the reason test.yml gives — the job name is what a required status check and the auto-merge workflow match on — and for one of its own: a matrix expands `${{ matrix.arch }}` only in the runs it starts, so a pull request, where the `if` skips the job whole, reported the raw expression as the check's name. The workflow also takes a `workflow_dispatch` with one boolean input, `no-cache`, wired into both build steps — the remediation lever for an **Image Scan** finding, and the three jobs above verify and tag what it republishes. |
 | `.github/workflows/test.yml` | `name: test`. Four jobs: **Event File**, **Pytest**, **Pytest (arm64)** and **Pytest (arm/v7, emulated)**. Spelled out rather than written as a matrix; the file says why. |
 | `.github/workflows/test-results.yml` | On `workflow_run` of `test`, downloads the junit artifacts and publishes them as the **Test Results** check. |
 | `.github/workflows/lint.yml` | `name: lint`. Two jobs, each pinned and checksummed: `shellcheck`, displayed as **ShellCheck**, runs `shellcheck -S error` over `run`, `healthcheck` and the session-start hook — the only threshold the image scripts pass; `ruff`, displayed as **Ruff**, runs `ruff check --no-cache --select F,B tests` — pyflakes and bugbear over all the python in the tree. The only two linters there are, and neither reads a config file. |
 | `.github/workflows/scan.yml` | `name: scan`. One job, `trivy`, displayed as **Image Scan**: on a daily `schedule:` and on `workflow_dispatch`, downloads a pinned, checksummed trivy and scans the *published* image at `--ignore-unfixed --severity HIGH,CRITICAL`. The only workflow with a `schedule:`, and the only one that reports nothing on a pull request at all — `test-results.yml` has no `pull_request` trigger either, but its `workflow_run` on `test` puts a check there anyway. Files one issue when it finds something and closes it when it stops, which is the only thing in the tree that writes to the tracker; each of the first `MAX_REBUILD_ATTEMPTS` runs that finds the issue still open also dispatches **ci.yml** on `master` with `no-cache` set, *waits for that run* and re-scans what it published, so the run that applied the remedy is the one that closes the issue rather than the next morning's — see invariant 36. The waiting is why its `timeout-minutes` is the longest in the tree, and why the wait has a bound of its own well inside it: a job killed by `timeout-minutes` is *cancelled* rather than failed, and github's notification for a scheduled run fires on failure. |
 | `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates, by squash because `master` refuses a merge commit. Its header comment records the check names that *exist* and what it needs from the repository settings and the ruleset; which of them are *required* is the ruleset below. |
 | `.github/workflows/auto_update_pull_request_branches.yml` | On every push to `master`, and on `workflow_dispatch`: rebases every open, conflict-free, non-draft pull request that `master` left behind, which "Require branches to be up to date" would otherwise leave to a hand-pressed *Update branch*. Ported from Dell_iDRAC_fan_controller_Docker; its header says why it needs a GitHub App or a personal access token rather than the `GITHUB_TOKEN`. |
+| `LICENSE` | The GNU Affero General Public License v3.0 text, unmodified. The project is `AGPL-3.0-only`; it was MIT until the commit that added `NOTICE`. |
+| `NOTICE` | Collective copyright, the MIT notice of the code this repository started from (reproduced in full, as that licence requires), the third-party software aggregated in the image, the licence history, and the attribution clause. Copied into the image with `LICENSE` and `LICENSE-COMMERCIAL.md`. |
+| `LICENSE-COMMERCIAL.md` | The offer of a separate commercial licence, with the table of when one is and is not needed. Not itself a licence. |
+| `CONTRIBUTING.md` | The terms a contribution arrives under — AGPL to the public plus a licence to the maintainer to offer it commercially too, which is what keeps the commercial arm grantable — and the SPDX header every source file carries. |
 | `SECURITY.md` | Where to report a vulnerability, and — the half that is actually load-bearing — what is *not* one here: the open relay default (invariant 23), no client TLS, starting as root, and a scanner row with no fixed version. Without that, a policy invites reports about behaviour the README documents as deliberate. Names no address: it points at github's private vulnerability reporting, which needs a repository setting rather than a file. |
 | `.github/dependabot.yml` | `github-actions` weekly (grouped minor/patch and major), `docker` daily for the base image, `pip` weekly for the pinned test dependencies in `tests/`, `docker` weekly on `/tests`, which covers both anchors there. |
 | `.github/rulesets/master.json` | The live `master` ruleset, "Protect master branch", in github's export/import form less the `id` and `source` fields an export adds: no deletion, no force-push, pull requests only with no approval required, a linear history, and the five required status checks. Conditioned on `~DEFAULT_BRANCH` rather than a literal `refs/heads/master`, so renaming the default branch does not quietly stop gating it. `tests/test_ruleset.py` is what keeps it true; nothing else in the tree reads it. It is the record that makes "CI blocks a bad pull request" checkable instead of believed, and it is what gets imported under Settings > Rules. |
 
-There is no `CONTRIBUTING.md`, no linter *config* of any kind — `lint.yml`
-passes both linters their selection on the command line — and no per-file
-license header — see [Conventions](#conventions).
+There is no linter *config* of any kind — `lint.yml` passes both linters their
+selection on the command line. Every source file carries an SPDX licence
+header — see [Conventions](#conventions).
 
 ## Dependency graph
 
@@ -73,10 +77,11 @@ Dockerfile ──FROM──> debian:trixie-<date>-slim
     │                  (pinned; bumped daily by .github/dependabot.yml,
     │                   docker ecosystem — no Bumpfile, no "# bump:" line)
     ├──COPY──> run          -> /root/run          <- CMD
-    └──COPY──> healthcheck  -> /root/healthcheck  <- HEALTHCHECK
+    ├──COPY──> healthcheck  -> /root/healthcheck  <- HEALTHCHECK
+    └──COPY──> LICENSE, NOTICE, LICENSE-COMMERCIAL.md -> /root/
 
-.dockerignore excludes .git, README.md, SECURITY.md, LICENSE, tests,
-                     pytest.ini, CLAUDE.md, .claude
+.dockerignore excludes .git, README.md, SECURITY.md, tests, pytest.ini,
+                     CLAUDE.md, .claude
     => nothing under tests/, and neither pytest.ini nor this document, can
        invalidate the build cache
 
@@ -488,9 +493,17 @@ Notes a contributor will hit:
   commit bodies they bring in are where its decisions are recorded.
 - **Sign-off.** Not used. `git log --all --grep="Signed-off-by"` matches
   nothing and there is no DCO check. Do not add one.
-- **License headers.** Not used. The project is MIT ([LICENSE](LICENSE)); no
-  source file carries a header and `SPDX` appears nowhere in the tree. Do not
-  add one to new files.
+- **License headers.** Every source file carries the two-line SPDX header
+  `CONTRIBUTING.md` spells out — `run`, `healthcheck` and the session-start
+  hook right after the shebang, every Python module under `tests/`, every
+  workflow, `.github/dependabot.yml` and the `Dockerfile` at the top. Add it
+  to any new one. `tests/__init__.py` stays empty, and the two unbuilt anchors
+  under `tests/` and the JSON files carry none.
+  `auto_update_pull_request_branches.yml` is the one header that differs: it
+  was ported from Dell_iDRAC_fan_controller_Docker, and keeps the notice it
+  carried there. The project is `AGPL-3.0-only` with a commercial alternative
+  ([LICENSE](LICENSE), [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md),
+  [NOTICE](NOTICE)); it was MIT until the commit that added `NOTICE`.
 - **Shell style.** The three shell scripts — `run`, `healthcheck` and
   `.claude/hooks/session-start.sh` — are all `#!/bin/bash`. No `set -e` (see
   below), function brace on its own line, `[ ... ] ; then` with spaces around
@@ -895,7 +908,7 @@ changing any of them.
 
 31. **Base-image bumping is Dependabot's, not `wader/bump`'s.** `Bumpfile`,
     `.github/workflows/bump.yml` and the `# bump:` directive on line 1 of the
-    `Dockerfile` were all removed; line 1 is now a plain `FROM`. The two
+    `Dockerfile` were all removed; its `FROM` line is now plain. The two
     properties bump had are preserved by construction in
     `.github/dependabot.yml`: Dependabot only offers tags matching the shape of
     the current one, so `trixie-<date>-slim` stays on trixie and stays slim,
