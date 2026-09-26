@@ -1,11 +1,12 @@
 """The checks that gate a merge, against the jobs that report them.
 
-`.github/rulesets/master.json` records the required status checks so the gate
-can be checked rather than believed. These tests are what keep that record
+`.github/rulesets/master.json` records the ruleset protecting master so the
+gate can be checked rather than believed. These tests are what keep that record
 true: a required check is matched by a job's display `name:`, so renaming a
 job without editing the ruleset leaves a context that never reports, and a
 context that never reports blocks every pull request until someone with admin
-rights notices.
+rights notices. The same goes for the merge method the Dependabot auto-merge
+asks for, which the ruleset can refuse just as silently.
 
 Unlike every other module here these tests read files and start nothing, so
 they are the one part of the suite that needs no docker daemon.
@@ -19,6 +20,8 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RULESET = REPO_ROOT / ".github" / "rulesets" / "master.json"
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
+AUTO_MERGE = WORKFLOWS / "dependabot-auto-merge.yml"
+MERGE_METHODS = {"--merge": "merge", "--squash": "squash", "--rebase": "rebase"}
 
 
 def ruleset():
@@ -61,8 +64,17 @@ def test_the_ruleset_still_gates_the_default_branch():
     Every way it can stop gating while still parsing, so that the file being
     re-importable is not mistaken for it being the same file: disabled or in
     "evaluate" mode, aimed at something other than the default branch, the
-    default branch excluded again underneath, opened to a bypass actor, or the
-    one rule replaced by a type that gates nothing.
+    default branch excluded again underneath, opened to a bypass actor, its
+    rule requiring checks dropped or emptied, or a required approval added.
+
+    The file is the whole of the live ruleset, not only its checks: master is
+    also protected against deletion and force-pushes, takes pull requests
+    only, and keeps a linear history, and a file carrying the checks alone
+    would drop all four the day it was imported in place of the live one.
+    Those four are not asserted here -- they are protections, not what makes
+    the gate pass or fail. The approval count is: one required approval holds
+    every Dependabot update for a person, however green, which is the thing
+    the auto-merge workflow exists to stop.
     """
     recorded = ruleset()
     assert recorded["target"] == "branch"
@@ -70,4 +82,76 @@ def test_the_ruleset_still_gates_the_default_branch():
     assert recorded["conditions"]["ref_name"]["include"] == ["~DEFAULT_BRANCH"]
     assert recorded["conditions"]["ref_name"]["exclude"] == []
     assert recorded["bypass_actors"] == []
-    assert [r["type"] for r in recorded["rules"]] == ["required_status_checks"]
+    checks = [r for r in recorded["rules"] if r["type"] == "required_status_checks"]
+    assert len(checks) == 1, "the ruleset carries exactly one rule that requires checks"
+    assert checks[0]["parameters"]["required_status_checks"], (
+        "a ruleset requiring no check lets auto-merge land an update with "
+        "nothing checked"
+    )
+    approvals = [
+        r["parameters"]["required_approving_review_count"]
+        for r in recorded["rules"]
+        if r["type"] == "pull_request"
+    ]
+    assert not any(approvals), (
+        f"required approvals {approvals}: one holds every Dependabot update "
+        f"for a person, however green"
+    )
+
+
+def auto_merge_methods():
+    """The merge methods the Dependabot auto-merge workflow asks `gh` for."""
+    methods = []
+    for job in yaml.safe_load(AUTO_MERGE.read_text())["jobs"].values():
+        for step in job.get("steps", []):
+            words = step.get("run", "").split()
+            if words[:3] == ["gh", "pr", "merge"]:
+                methods += [MERGE_METHODS[w] for w in words if w in MERGE_METHODS]
+    return methods
+
+
+def test_dependabot_merges_by_a_method_the_ruleset_allows():
+    """`gh pr merge --auto` asks for one merge method, and the ruleset decides
+    which ones master takes: the pull request rule can narrow the list, and a
+    linear history refuses a merge commit whatever that list says.
+
+    That is how the auto-merge came to ask for `--merge` on a master that
+    requires a linear history: the flag was written when the ruleset carried
+    only its checks, and nothing read the two side by side.
+    """
+    methods = auto_merge_methods()
+    assert len(methods) == 1, (
+        f"expected {AUTO_MERGE.name} to ask for exactly one merge method, "
+        f"got {methods}"
+    )
+    rules = {r["type"]: r.get("parameters", {}) for r in ruleset()["rules"]}
+    allowed = set(
+        rules.get("pull_request", {}).get("allowed_merge_methods", MERGE_METHODS.values())
+    )
+    if "required_linear_history" in rules:
+        allowed.discard("merge")
+    assert methods[0] in allowed, (
+        f"{AUTO_MERGE.name} merges by {methods[0]!r}, which the ruleset does "
+        f"not allow; it allows {sorted(allowed)}"
+    )
+
+
+def test_strict_mode_has_something_updating_branches():
+    """"Require branches to be up to date" blocks every pull request `master`
+    has moved past until its branch is updated, and nothing here gets a merge
+    queue, which needs an organisation-owned repository. Without the workflow
+    that presses *Update branch* after each merge, turning strict mode on
+    leaves that to a person for every open pull request, Dependabot's
+    included.
+    """
+    checks = [r for r in ruleset()["rules"] if r["type"] == "required_status_checks"]
+    if not checks[0]["parameters"]["strict_required_status_checks_policy"]:
+        return
+    updater = WORKFLOWS / "auto_update_pull_request_branches.yml"
+    assert updater.exists(), (
+        "the ruleset requires branches to be up to date, and nothing updates them"
+    )
+    triggers = yaml.safe_load(updater.read_text())[True]
+    assert triggers["push"]["branches"] == ["master"], (
+        f"{updater.name} has to run on every push to master, got {triggers}"
+    )

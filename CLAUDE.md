@@ -21,7 +21,8 @@ docker's `HEALTHCHECK` invokes.
 
 Published as `mwader/postfix-relay`. Issue and pull request numbers cited below
 are this repository's own tracker; contributor branches live in forks, which is
-why merge commits name someone else's namespace.
+why the merge commits from before `master` required a linear history name
+someone else's namespace.
 
 ## Layout
 
@@ -51,10 +52,11 @@ why merge commits name someone else's namespace.
 | `.github/workflows/test-results.yml` | On `workflow_run` of `test`, downloads the junit artifacts and publishes them as the **Test Results** check. |
 | `.github/workflows/lint.yml` | `name: lint`. Two jobs, each pinned and checksummed: `shellcheck`, displayed as **ShellCheck**, runs `shellcheck -S error` over `run`, `healthcheck` and the session-start hook — the only threshold the image scripts pass; `ruff`, displayed as **Ruff**, runs `ruff check --no-cache --select F,B tests` — pyflakes and bugbear over all the python in the tree. The only two linters there are, and neither reads a config file. |
 | `.github/workflows/scan.yml` | `name: scan`. One job, `trivy`, displayed as **Image Scan**: on a daily `schedule:` and on `workflow_dispatch`, downloads a pinned, checksummed trivy and scans the *published* image at `--ignore-unfixed --severity HIGH,CRITICAL`. The only workflow with a `schedule:`, and the only one that reports nothing on a pull request at all — `test-results.yml` has no `pull_request` trigger either, but its `workflow_run` on `test` puts a check there anyway. Files one issue when it finds something and closes it when it stops, which is the only thing in the tree that writes to the tracker; each of the first `MAX_REBUILD_ATTEMPTS` runs that finds the issue still open also dispatches **ci.yml** on `master` with `no-cache` set, *waits for that run* and re-scans what it published, so the run that applied the remedy is the one that closes the issue rather than the next morning's — see invariant 36. The waiting is why its `timeout-minutes` is the longest in the tree, and why the wait has a bound of its own well inside it: a job killed by `timeout-minutes` is *cancelled* rather than failed, and github's notification for a scheduled run fires on failure. |
-| `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates. Its header comment records the check names that *exist* and the two repository settings it depends on; which of them are *required* is the ruleset below. |
+| `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates, by squash because `master` refuses a merge commit. Its header comment records the check names that *exist* and what it needs from the repository settings and the ruleset; which of them are *required* is the ruleset below. |
+| `.github/workflows/auto_update_pull_request_branches.yml` | On every push to `master`, and on `workflow_dispatch`: rebases every open, conflict-free, non-draft pull request that `master` left behind, which "Require branches to be up to date" would otherwise leave to a hand-pressed *Update branch*. Ported from Dell_iDRAC_fan_controller_Docker; its header says why it needs a GitHub App or a personal access token rather than the `GITHUB_TOKEN`. |
 | `SECURITY.md` | Where to report a vulnerability, and — the half that is actually load-bearing — what is *not* one here: the open relay default (invariant 23), no client TLS, starting as root, and a scanner row with no fixed version. Without that, a policy invites reports about behaviour the README documents as deliberate. Names no address: it points at github's private vulnerability reporting, which needs a repository setting rather than a file. |
 | `.github/dependabot.yml` | `github-actions` weekly (grouped minor/patch and major), `docker` daily for the base image, `pip` weekly for the pinned test dependencies in `tests/`, `docker` weekly on `/tests`, which covers both anchors there. |
-| `.github/rulesets/master.json` | The `master` ruleset in github's export/import form: the five required status checks and nothing else. Conditioned on `~DEFAULT_BRANCH` rather than a literal `refs/heads/master`, so renaming the default branch does not quietly stop gating it. `tests/test_ruleset.py` is what keeps it true; nothing else in the tree reads it. It is the record that makes "CI blocks a bad pull request" checkable instead of believed, and it is what gets imported under Settings > Rules. |
+| `.github/rulesets/master.json` | The live `master` ruleset, "Protect master branch", in github's export/import form less the `id` and `source` fields an export adds: no deletion, no force-push, pull requests only with no approval required, a linear history, and the five required status checks. Conditioned on `~DEFAULT_BRANCH` rather than a literal `refs/heads/master`, so renaming the default branch does not quietly stop gating it. `tests/test_ruleset.py` is what keeps it true; nothing else in the tree reads it. It is the record that makes "CI blocks a bad pull request" checkable instead of believed, and it is what gets imported under Settings > Rules. |
 
 There is no `CONTRIBUTING.md`, no linter *config* of any kind — `lint.yml`
 passes both linters their selection on the command line — and no per-file
@@ -390,20 +392,41 @@ Notes a contributor will hit:
   so there is no check to require, and adding one would put a vulnerability
   database — an input that cannot be pinned, because pinning it defeats the
   scan — in front of pull requests that cannot have caused its verdict.
-- **The ruleset carries that one rule and no bypass actors.**
-  `strict_required_status_checks_policy` is false, so a branch does not have to
-  be brought up to date with `master` before it merges — with dependabot
-  auto-merge on, requiring it would re-run every open branch on each merge for a
-  repository whose pull requests do not touch each other. Force-push, deletion,
-  required-review and required-pull-request rules are all absent on purpose:
-  recording what already gates a merge is one thing, and changing the policy is
-  another. Each `context` omits `integration_id`, so which app may report a
-  check is settled in the import dialog rather than by an id pinned here.
+- **The file is the whole live ruleset, and it has no bypass actors.** A file
+  carrying the checks alone would drop every other protection the day it was
+  imported in place of the live one. `master` cannot be deleted or
+  force-pushed, takes changes only through a pull request, and keeps a linear
+  history — which refuses a merge commit, and is why pull requests are
+  squash-merged (see [Conventions](#conventions)). The pull request rule
+  requires no approval: one would hold every Dependabot update for a person
+  however green, and `tests/test_ruleset.py` fails on it.
+  `require_extra_approval_for_unattributed_changes` asks one approval more for
+  a commit whose author GitHub ties to no account; `dependabot[bot]` and the
+  `claude` account the sessions commit as are both accounts. Every `context`
+  pins `integration_id` 15368, GitHub Actions, so no other app can report a
+  required check under the same name.
+  `strict_required_status_checks_policy` is true: a branch has to contain
+  `master`'s head before it merges, so each merge leaves every other open pull
+  request to be updated and re-checked. The merge queue, GitHub's own answer,
+  needs a repository owned by an organisation, and auto-merge does not update
+  a branch, so `auto_update_pull_request_branches.yml` does it: on every push
+  to `master` it rebases each conflict-free, non-draft pull request left
+  behind, falling back to a merge commit on the branch — which the squash then
+  discards. It needs a GitHub App or a personal access token, because an
+  update the `GITHUB_TOKEN` pushes leaves the checks waiting for someone to
+  approve the run; the header says which variable and secrets it reads, and
+  the run fails saying so while none is set. The one merge it never hears of
+  is the Dependabot auto-merge's, made with the `GITHUB_TOKEN`, whose pushes
+  start no workflow; what that leaves behind waits for the next human merge, a
+  run started by hand, or Dependabot itself, which its documentation has
+  rebase on a conflict and when its schedule next runs. `tests/test_ruleset.py`
+  fails if strict mode is recorded with nothing left to update branches.
 - **The pytest step has `timeout-minutes: 10`** inside a 20-minute job (25/45
   for the emulated one). The job timeouts are backstops: a cancelled job skips
   the upload step, so the bound expected to fire is the step's. Every wait in
   the suite is bounded, so overrunning it means something is stuck, not slow.
-  Every job in the repository carries one — thirteen of thirteen — which is
+  Every job in the repository carries one, and `tests/test_scan.py` fails on
+  a job that does not, which is
   not a style rule: a job without it runs to github's default of six hours,
   and the three that had none included **Build Image**, a required check.
 - **One action is pinned to a commit**, `EnricoMi/publish-unit-test-result-action`
@@ -447,8 +470,16 @@ Notes a contributor will hit:
   against a built image — "Tested on the built image: …" and "Verified on
   the built image: …" are both in use. Reference issues with `Closes #NNN` /
   `Fixes #NNN`. The commit bodies here are unusually detailed and are the
-  primary record of the decisions listed below — keep that up. Pull requests
-  are merged with merge commits.
+  primary record of the decisions listed below — keep that up.
+- **Merging.** Pull requests are squash-merged: `master` requires a linear
+  history, which refuses a merge commit, and `tests/test_ruleset.py` holds the
+  Dependabot auto-merge to the same method. The squashed commit takes the pull
+  request's title as its subject and its description as its body, so the
+  title follows the subject convention above and the description is where the
+  *why* goes — it is what ends up in `git log`. The commits of a pull request
+  do not survive the squash, which makes them drafts: a record meant to last
+  goes in the description. History before that rule is merge commits, and the
+  commit bodies they bring in are where its decisions are recorded.
 - **Sign-off.** Not used. `git log --all --grep="Signed-off-by"` matches
   nothing and there is no DCO check. Do not add one.
 - **License headers.** Not used. The project is MIT ([LICENSE](LICENSE)); no
