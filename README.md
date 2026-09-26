@@ -952,7 +952,7 @@ releasing something no check has seen.
 | `test_secrets.py` | Configuration read from a file instead of the environment, and what the health check still expects |
 | `test_qshape.py` | The queue tool the troubleshooting section has users run |
 | `test_upgrade.py` | Starting on the state the last released image wrote, which is what the "Upgrading" section promises |
-| `test_ruleset.py` | The required status checks recorded in `.github/rulesets/master.json`, against the jobs that report them |
+| `test_ruleset.py` | The ruleset recorded in `.github/rulesets/master.json`: its required status checks against the jobs that report them, and its merge methods against the one the Dependabot auto-merge asks for |
 | `test_ci.py` | What the build workflow runs against the image it has just published, which is not the same on a merge and on a rebuild |
 | `test_scan.py` | What the daily image scan does with a finding: the rebuild it dispatches, the re-scan that says whether it worked, and the issue it then closes |
 

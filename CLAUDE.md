@@ -21,7 +21,8 @@ docker's `HEALTHCHECK` invokes.
 
 Published as `mwader/postfix-relay`. Issue and pull request numbers cited below
 are this repository's own tracker; contributor branches live in forks, which is
-why merge commits name someone else's namespace.
+why the merge commits from before `master` required a linear history name
+someone else's namespace.
 
 ## Layout
 
@@ -51,7 +52,7 @@ why merge commits name someone else's namespace.
 | `.github/workflows/test-results.yml` | On `workflow_run` of `test`, downloads the junit artifacts and publishes them as the **Test Results** check. |
 | `.github/workflows/lint.yml` | `name: lint`. Two jobs, each pinned and checksummed: `shellcheck`, displayed as **ShellCheck**, runs `shellcheck -S error` over `run`, `healthcheck` and the session-start hook — the only threshold the image scripts pass; `ruff`, displayed as **Ruff**, runs `ruff check --no-cache --select F,B tests` — pyflakes and bugbear over all the python in the tree. The only two linters there are, and neither reads a config file. |
 | `.github/workflows/scan.yml` | `name: scan`. One job, `trivy`, displayed as **Image Scan**: on a daily `schedule:` and on `workflow_dispatch`, downloads a pinned, checksummed trivy and scans the *published* image at `--ignore-unfixed --severity HIGH,CRITICAL`. The only workflow with a `schedule:`, and the only one that reports nothing on a pull request at all — `test-results.yml` has no `pull_request` trigger either, but its `workflow_run` on `test` puts a check there anyway. Files one issue when it finds something and closes it when it stops, which is the only thing in the tree that writes to the tracker; each of the first `MAX_REBUILD_ATTEMPTS` runs that finds the issue still open also dispatches **ci.yml** on `master` with `no-cache` set, *waits for that run* and re-scans what it published, so the run that applied the remedy is the one that closes the issue rather than the next morning's — see invariant 36. The waiting is why its `timeout-minutes` is the longest in the tree, and why the wait has a bound of its own well inside it: a job killed by `timeout-minutes` is *cancelled* rather than failed, and github's notification for a scheduled run fires on failure. |
-| `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates. Its header comment records the check names that *exist* and the two repository settings it depends on; which of them are *required* is the ruleset below. |
+| `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates, by squash because `master` refuses a merge commit. Its header comment records the check names that *exist* and what it needs from the repository settings and the ruleset; which of them are *required* is the ruleset below. |
 | `SECURITY.md` | Where to report a vulnerability, and — the half that is actually load-bearing — what is *not* one here: the open relay default (invariant 23), no client TLS, starting as root, and a scanner row with no fixed version. Without that, a policy invites reports about behaviour the README documents as deliberate. Names no address: it points at github's private vulnerability reporting, which needs a repository setting rather than a file. |
 | `.github/dependabot.yml` | `github-actions` weekly (grouped minor/patch and major), `docker` daily for the base image, `pip` weekly for the pinned test dependencies in `tests/`, `docker` weekly on `/tests`, which covers both anchors there. |
 | `.github/rulesets/master.json` | The `master` ruleset in github's export/import form: the five required status checks and nothing else. Conditioned on `~DEFAULT_BRANCH` rather than a literal `refs/heads/master`, so renaming the default branch does not quietly stop gating it. `tests/test_ruleset.py` is what keeps it true; nothing else in the tree reads it. It is the record that makes "CI blocks a bad pull request" checkable instead of believed, and it is what gets imported under Settings > Rules. |
@@ -447,8 +448,16 @@ Notes a contributor will hit:
   against a built image — "Tested on the built image: …" and "Verified on
   the built image: …" are both in use. Reference issues with `Closes #NNN` /
   `Fixes #NNN`. The commit bodies here are unusually detailed and are the
-  primary record of the decisions listed below — keep that up. Pull requests
-  are merged with merge commits.
+  primary record of the decisions listed below — keep that up.
+- **Merging.** Pull requests are squash-merged: `master` requires a linear
+  history, which refuses a merge commit, and `tests/test_ruleset.py` holds the
+  Dependabot auto-merge to the same method. The squashed commit takes the pull
+  request's title as its subject and its description as its body, so the
+  title follows the subject convention above and the description is where the
+  *why* goes — it is what ends up in `git log`. The commits of a pull request
+  do not survive the squash, which makes them drafts: a record meant to last
+  goes in the description. History before that rule is merge commits, and the
+  commit bodies they bring in are where its decisions are recorded.
 - **Sign-off.** Not used. `git log --all --grep="Signed-off-by"` matches
   nothing and there is no DCO check. Do not add one.
 - **License headers.** Not used. The project is MIT ([LICENSE](LICENSE)); no

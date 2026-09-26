@@ -7,6 +7,9 @@
 #   does not wait for CI and merges straight away. The one this expects is
 #   committed as .github/rulesets/master.json, in the form github's
 #   "Import a ruleset" takes.
+# - a merge method that ruleset allows: it requires a linear history, which
+#   rules out "--merge" and leaves "--squash", the one the maintainer's
+#   pull requests use too.
 #
 # Required checks are matched by job name, not by workflow name. The names
 # that exist are "Build Image", "Pytest", "Pytest (arm64)",
@@ -57,9 +60,13 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Squash, because master requires a linear history: a merge commit is
+      # exactly what that rule refuses, so "--merge" asked for the one kind of
+      # merge master cannot take. tests/test_ruleset.py holds this flag to the
+      # methods the ruleset allows.
       - name: Enable auto-merge for minor and patch updates
         if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
-        run: gh pr merge --auto --merge "$PR_URL"
+        run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           # GITHUB_TOKEN works out of the box, but a merge performed with it
