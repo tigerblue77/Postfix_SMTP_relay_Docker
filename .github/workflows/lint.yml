@@ -91,7 +91,7 @@ jobs:
   # impose a line length the suite has never had, I001 would reorder the imports
   # of most of the files that have any, and "ruff format" would rewrite most of
   # them -- and none of it is a defect today. The measured cost of each is in
-  # #304.
+  # wader/postfix-relay#304.
   #
   # The selection is written out rather than inherited from ruff's default,
   # because that default is a moving target: on this tree, unchanged, it finds a

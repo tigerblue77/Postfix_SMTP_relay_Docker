@@ -233,7 +233,7 @@ jobs:
     # none of them writes is latest: "Publish latest" moves that afterwards,
     # and only on the strength of this job and its arm64 twin. So a red check
     # here is not a report on an image users are already pulling. It keeps the
-    # tag where it was. (issue #272)
+    # tag where it was. (issue wader/postfix-relay#272)
     #
     # Spelled out rather than written as a matrix, and the job below with it,
     # for the reason test.yml gives at the top of that file: the job name is
@@ -333,7 +333,7 @@ jobs:
         # its package set is the one thing about the image that the suite has
         # never seen, while a merge changes the tree the suite is built to
         # test. Minutes instead of seconds, on a job that runs only when the
-        # scan or a person asked for a rebuild. (issue #381)
+        # scan or a person asked for a rebuild. (issue wader/postfix-relay#381)
         #
         # No junit either way. The reporter in test-results.yml follows the
         # "test" workflow, and this job's own verdict is the signal.
@@ -419,7 +419,7 @@ jobs:
     # image behind that digest has been pulled back from the registry on both
     # runner architectures and has started, reported healthy and relayed a
     # whole message on each -- which is the difference between the suite
-    # gating what merges and gating what ships. (issue #272)
+    # gating what merges and gating what ships. (issue wader/postfix-relay#272)
     #
     # It cannot make the publication conditional on the whole suite: that runs
     # in test.yml, and a job cannot wait on another workflow. What it does gate
@@ -458,7 +458,7 @@ jobs:
         # github arrives as an empty string rather than a non-zero exit, and
         # without it this would read as "superseded" and quietly stop promoting
         # anything ever again -- the one outcome worse than promoting the wrong
-        # image. (issue #306)
+        # image. (issue wader/postfix-relay#306)
         run: |
           head=$(git ls-remote "${SERVER}/${REPOSITORY}" refs/heads/master | cut -f1)
           if [ -z "${head}" ] ; then

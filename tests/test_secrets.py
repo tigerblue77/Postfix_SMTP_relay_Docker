@@ -83,7 +83,7 @@ def test_the_password_is_nowhere_in_the_container_environment(relay):
 
 
 def test_the_generated_table_is_readable_by_root_only(relay):
-    """Regression test for issue #178.
+    """Regression test for issue wader/postfix-relay#178.
 
     postmap leaves the table and its database at root:root 644, and they hold
     the password that was kept out of the environment -- readable by opendkim,

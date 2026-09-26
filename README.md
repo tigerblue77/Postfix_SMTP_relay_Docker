@@ -71,14 +71,16 @@ Note that [SRS rewriting](#postsrsd-variables) is unavailable on `arm/v7`.
 <!-- QUICK START -->
 ## Quick start
 
-`docker pull mwader/postfix-relay` or clone/build it yourself.
+`docker pull tigerblue77/postfix_smtp_relay` or clone/build it yourself. It
+was published as `mwader/postfix-relay` until September 2026; see [Coming
+from `mwader/postfix-relay`](#coming-from-mwaderpostfix-relay).
 
 You probably want to set `POSTFIX_myhostname` (the FQDN used by 220/HELO), see
 [Postfix variables](#postfix-variables).
 
 ### Using docker run
 ```
-docker run -e POSTFIX_myhostname=smtp.domain.tld mwader/postfix-relay
+docker run -e POSTFIX_myhostname=smtp.domain.tld tigerblue77/postfix_smtp_relay
 ```
 
 ### Using docker-compose
@@ -89,7 +91,7 @@ services:
     # sends its mail to the host "smtp", which is the service below
 
   smtp:
-    image: mwader/postfix-relay
+    image: tigerblue77/postfix_smtp_relay
     restart: always
     environment:
       - POSTFIX_myhostname=smtp.domain.tld
@@ -212,7 +214,7 @@ To hand mail over to a provider instead of delivering it yourself, point
 ```
 services:
   smtp:
-    image: mwader/postfix-relay
+    image: tigerblue77/postfix_smtp_relay
     environment:
       - POSTFIX_myhostname=smtp.domain.tld
       - POSTFIX_relayhost=[smtp.provider.tld]:587
@@ -398,7 +400,7 @@ The container includes [Postfix SASL](https://www.postfix.org/SASL_README.html) 
 First, create a passwd file.
 
 ```
-echo "myuser:"`docker run --rm mwader/postfix-relay mkpasswd -m sha-512 "mypassword"` >> passwd_file
+echo "myuser:"`docker run --rm tigerblue77/postfix_smtp_relay mkpasswd -m sha-512 "mypassword"` >> passwd_file
 ```
 
 Then mount the passwd file and add the following postfix configs via enviromental variable.
@@ -614,6 +616,19 @@ mail.
 
 <!-- UPGRADING -->
 ## Upgrading
+
+### Coming from `mwader/postfix-relay`
+
+This image was published as `mwader/postfix-relay` until September 2026, from
+[wader/postfix-relay](https://github.com/wader/postfix-relay), which this
+repository started as a fork of and whose whole history it carries. Moving is
+an ordinary upgrade with a new name: change the `image:` line, keep the same
+variables and the same volumes. The upgrade tests start from the last
+`mwader/postfix-relay` release for exactly that reason (see
+[Testing](#testing)).
+
+### What an upgrade replaces
+
 Pulling a newer image replaces the container's whole filesystem, and that is
 what makes an upgrade here different from upgrading postfix on a host. The
 postfix configuration is not carried across: it comes from the new image, and
@@ -657,8 +672,8 @@ quiet, that is the state it is expected to be in. You do not have to take
 that on trust, and your risk appetite may not be ours: the image is public, so
 
 ```
-trivy image mwader/postfix-relay
-grype mwader/postfix-relay
+trivy image tigerblue77/postfix_smtp_relay
+grype tigerblue77/postfix_smtp_relay
 ```
 
 need no account and tell you what is in the one you are actually running. Both
@@ -894,8 +909,8 @@ tree, which is the only case where an image of this machine's own architecture
 is worth running the tests against instead of the tree:
 
 ```bash
-docker pull mwader/postfix-relay:latest
-POSTFIX_RELAY_IMAGE=mwader/postfix-relay:latest POSTFIX_RELAY_IMAGE_PUBLISHED=1 \
+docker pull tigerblue77/postfix_smtp_relay:latest
+POSTFIX_RELAY_IMAGE=tigerblue77/postfix_smtp_relay:latest POSTFIX_RELAY_IMAGE_PUBLISHED=1 \
   POSTFIX_RELAY_ARCH=amd64 pytest -m smoke
 ```
 

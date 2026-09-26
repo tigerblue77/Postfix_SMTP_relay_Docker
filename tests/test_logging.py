@@ -2,7 +2,7 @@
 
 Everything goes through rsyslog, configured from RSYSLOG_ variables, and
 the container log is the only place a user gets postfix messages from
-unless they ask for more (issue #58).
+unless they ask for more (issue wader/postfix-relay#58).
 """
 
 import re

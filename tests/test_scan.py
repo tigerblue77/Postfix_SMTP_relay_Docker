@@ -13,9 +13,9 @@ verification manual, and nothing in the tree could report back: `ci.yml` has no
 `issues` permission, no trigger here fires on another workflow finishing, and
 the close step reads the count from the scan its own run already did. So an
 issue could only be closed by a *later* run, and the only thing that starts one
-is the next day's cron. Issue #381 spent a day open over an image the rebuild
-had already fixed. Each assertion below names the step that keeps that from
-happening again.
+is the next day's cron. Issue wader/postfix-relay#381 spent a day open over an
+image the rebuild had already fixed. Each assertion below names the step that
+keeps that from happening again.
 
 Like `test_ruleset.py` these read files and start nothing, so they are part of
 the small half of the suite that needs no docker daemon.
@@ -164,11 +164,12 @@ def test_the_attempt_budget_is_per_finding_and_not_per_issue():
 
 def test_a_recorded_attempt_is_read_back_before_it_is_spent():
     """The attempt counter is the only state this job keeps, and it keeps it in
-    an issue body other things write to -- #381 acquired an assignee nothing in
-    the workflow sets, 87 seconds after the workflow created it. A marker that
-    goes missing reads back as attempt 0, so the budget restarts and the cap
-    never engages: the same silent shape as the sed no-op of #379, which cost a
-    day of retries before anyone noticed it was not counting.
+    an issue body other things write to -- wader/postfix-relay#381 acquired an
+    assignee nothing in the workflow sets, 87 seconds after the workflow
+    created it. A marker that goes missing reads back as attempt 0, so the
+    budget restarts and the cap never engages: the same silent shape as the sed
+    no-op of wader/postfix-relay#379, which cost a day of retries before anyone
+    noticed it was not counting.
     """
     issue = scan_steps()["Open or retry the finding issue"]["run"]
     assert "confirmStamp" in issue, (
