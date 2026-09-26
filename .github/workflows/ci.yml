@@ -24,8 +24,8 @@ on:
         type: boolean
         default: false
 
-# A new push makes the images an in-flight run would produce obsolete, except
-# on master where the run publishes latest.
+# A new push makes an in-flight run's build obsolete, except on master, where
+# the run is the one that publishes.
 concurrency:
   # The group carries the commit on master, so a master run never queues
   # behind another one. cancel-in-progress alone did not buy that: it
@@ -74,13 +74,18 @@ jobs:
         env:
           DOCKER_REPO: "${{ secrets.DOCKER_REPO }}"
       -
+        # No tag is derived from the ref. A branch builds but never publishes
+        # (see "Build branch or test PR" below), and master publishes
+        # "sha-<commit>" alone, which "Publish latest" then moves latest onto.
+        # A ref tag turned every branch pushed here into a permanent Docker
+        # Hub tag, master's own among them, and deleting the branch never
+        # removed it.
         name: Docker meta
         id: docker_meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ steps.reponame.outputs.DOCKER_REPO }} # list of Docker images to use as base name for tags
           tags: |
-            type=ref,event=branch
             type=semver,pattern={{major}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{version}}
@@ -94,26 +99,30 @@ jobs:
         name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       -
-        # Dependabot pushes its branch before opening the pull request, and a
-        # run it triggers can only read Dependabot secrets, never the Actions
-        # secrets below. Logging in would fail, so skip the registry for it and
-        # let the build alone prove the bump.
+        # Only the refs that publish log in: master, which pushes
+        # "sha-<commit>", and a release tag, whose step below copies that image
+        # onto the version tags. A branch, a pull request or a dispatch on a
+        # branch builds without ever holding the credentials.
+        #
+        # The dependabot test is older than that and stays: a run Dependabot
+        # triggers can only read Dependabot secrets, never the Actions secrets
+        # below, so logging in would fail.
         name: Login to DockerHub
-        if: github.event_name != 'pull_request' && github.actor != 'dependabot[bot]'
+        if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.actor != 'dependabot[bot]'
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       -
-        # Still master's own step, and still an unconditional push: the
-        # dependabot exclusion below belongs to branch pushes, where the run
-        # reads Dependabot secrets and cannot log in, and putting it here would
-        # leave a master push made by that actor building an image the jobs
-        # below then went looking for.
+        # Still master's own step, and still an unconditional push, whoever
+        # the actor. A master run Dependabot itself started skips the login
+        # above and fails here, which is the point: skipping the push instead
+        # would leave the jobs below looking for an image that was never
+        # published.
         #
         # What changed is the tags. This used to write the tag users pull,
-        # straight out of buildx; now it pushes docker_meta's -- on master the
-        # branch name and "sha-<commit>" -- and "Publish latest" below moves
+        # straight out of buildx; now it pushes docker_meta's -- on master that
+        # is "sha-<commit>" alone -- and "Publish latest" below moves
         # latest onto the digest afterwards, once the image has been pulled
         # back and tested. "latest" is not among these tags and is never
         # written here ("latest=false" in the flavor above).
@@ -135,15 +144,20 @@ jobs:
           no-cache: ${{ inputs.no-cache || false }}
       -
         # Tag refs are excluded here and handled by the step below, which
-        # builds nothing at all. What is left is branches and pull requests.
-        name: Build and push branch or test PR
+        # builds nothing at all. What is left is branches and pull requests,
+        # and neither publishes: the build is the check, proving the three
+        # architectures still build, and its tags go nowhere. Pushing here made
+        # every branch pushed to this repository itself, rather than to a
+        # fork, a permanent "<image>:<branch>" tag on Docker Hub: one tag per
+        # piece of work, merged or abandoned (issue #20).
+        name: Build branch or test PR
         if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm/v7,linux/arm64/v8
-          push: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
+          push: false
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
           cache-from: type=gha
@@ -213,9 +227,9 @@ jobs:
     # user pulls it, and runs the smoke tests against it.
     #
     # Only where there was a publication to check: this job runs on master,
-    # where the build pushed the branch name and "sha-<commit>". Other branches
-    # push their own tags, and a tag ref copies the release tags onto an image
-    # master already published -- neither is the artefact this is about. What
+    # where the build pushed "sha-<commit>". Other branches push nothing, and a
+    # tag ref copies the release tags onto an image master already published
+    # -- neither is the artefact this is about. What
     # none of them writes is latest: "Publish latest" moves that afterwards,
     # and only on the strength of this job and its arm64 twin. So a red check
     # here is not a report on an image users are already pulling. It keeps the
