@@ -55,7 +55,7 @@ someone else's namespace.
 | `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates, by squash because `master` refuses a merge commit. Its header comment records the check names that *exist* and what it needs from the repository settings and the ruleset; which of them are *required* is the ruleset below. |
 | `SECURITY.md` | Where to report a vulnerability, and — the half that is actually load-bearing — what is *not* one here: the open relay default (invariant 23), no client TLS, starting as root, and a scanner row with no fixed version. Without that, a policy invites reports about behaviour the README documents as deliberate. Names no address: it points at github's private vulnerability reporting, which needs a repository setting rather than a file. |
 | `.github/dependabot.yml` | `github-actions` weekly (grouped minor/patch and major), `docker` daily for the base image, `pip` weekly for the pinned test dependencies in `tests/`, `docker` weekly on `/tests`, which covers both anchors there. |
-| `.github/rulesets/master.json` | The `master` ruleset in github's export/import form: the five required status checks and nothing else. Conditioned on `~DEFAULT_BRANCH` rather than a literal `refs/heads/master`, so renaming the default branch does not quietly stop gating it. `tests/test_ruleset.py` is what keeps it true; nothing else in the tree reads it. It is the record that makes "CI blocks a bad pull request" checkable instead of believed, and it is what gets imported under Settings > Rules. |
+| `.github/rulesets/master.json` | The live `master` ruleset, "Protect master branch", in github's export/import form less the `id` and `source` fields an export adds: no deletion, no force-push, pull requests only with no approval required, a linear history, and the five required status checks. Conditioned on `~DEFAULT_BRANCH` rather than a literal `refs/heads/master`, so renaming the default branch does not quietly stop gating it. `tests/test_ruleset.py` is what keeps it true; nothing else in the tree reads it. It is the record that makes "CI blocks a bad pull request" checkable instead of believed, and it is what gets imported under Settings > Rules. |
 
 There is no `CONTRIBUTING.md`, no linter *config* of any kind — `lint.yml`
 passes both linters their selection on the command line — and no per-file
@@ -391,15 +391,26 @@ Notes a contributor will hit:
   so there is no check to require, and adding one would put a vulnerability
   database — an input that cannot be pinned, because pinning it defeats the
   scan — in front of pull requests that cannot have caused its verdict.
-- **The ruleset carries that one rule and no bypass actors.**
-  `strict_required_status_checks_policy` is false, so a branch does not have to
-  be brought up to date with `master` before it merges — with dependabot
-  auto-merge on, requiring it would re-run every open branch on each merge for a
-  repository whose pull requests do not touch each other. Force-push, deletion,
-  required-review and required-pull-request rules are all absent on purpose:
-  recording what already gates a merge is one thing, and changing the policy is
-  another. Each `context` omits `integration_id`, so which app may report a
-  check is settled in the import dialog rather than by an id pinned here.
+- **The file is the whole live ruleset, and it has no bypass actors.** A file
+  carrying the checks alone would drop every other protection the day it was
+  imported in place of the live one. `master` cannot be deleted or
+  force-pushed, takes changes only through a pull request, and keeps a linear
+  history — which refuses a merge commit, and is why pull requests are
+  squash-merged (see [Conventions](#conventions)). The pull request rule
+  requires no approval: one would hold every Dependabot update for a person
+  however green, and `tests/test_ruleset.py` fails on it.
+  `require_extra_approval_for_unattributed_changes` asks one approval more for
+  a commit whose author GitHub ties to no account; `dependabot[bot]` and the
+  `claude` account the sessions commit as are both accounts. Every `context`
+  pins `integration_id` 15368, GitHub Actions, so no other app can report a
+  required check under the same name.
+  `strict_required_status_checks_policy` is true: a branch has to contain
+  `master`'s head before it merges, so each merge leaves every other open pull
+  request to be updated and re-checked. Nothing here does that updating — the
+  merge queue needs a repository owned by an organisation, auto-merge does not
+  update a branch, and Dependabot rebases its own pull requests only to
+  resolve a conflict — so a pull request left behind waits for its *Update
+  branch* button, Dependabot's included.
 - **The pytest step has `timeout-minutes: 10`** inside a 20-minute job (25/45
   for the emulated one). The job timeouts are backstops: a cancelled job skips
   the upload step, so the bound expected to fire is the step's. Every wait in
