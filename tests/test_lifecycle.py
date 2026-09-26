@@ -41,7 +41,7 @@ def test_relaying_still_works_after_an_unclean_stop(postfix_factory, mailpit):
 
     Postfix and rsyslogd both refuse to start when they believe an instance
     is already running, which is how a container ends up in a restart loop
-    (issue #22).
+    (issue wader/postfix-relay#22).
     """
     relay = postfix_factory()
 
@@ -80,9 +80,10 @@ def test_the_container_stops_gracefully(postfix_factory):
 def test_dkim_and_srs_come_back_after_an_unclean_stop(postfix_factory, mailpit):
     """The pid files opendkim and postsrsd leave behind are cleaned up too.
 
-    Issue #22 was about postfix and rsyslogd, but a container killed with DKIM
-    or SRS enabled has the same problem, and a relay that comes back up without
-    them silently sends unsigned and unrewritten mail.
+    Issue wader/postfix-relay#22 was about postfix and rsyslogd, but a
+    container killed with DKIM or SRS enabled has the same problem, and a relay
+    that comes back up without them silently sends unsigned and unrewritten
+    mail.
     """
     relay = postfix_factory(env={'OPENDKIM_DOMAINS': 'example.com=sel1',
                                  'POSTSRSD_SRS_DOMAIN': 'srs.example.com'})
@@ -106,7 +107,7 @@ def test_local_mailboxes_are_not_taken_over(postfix_factory):
 
     postfix local(8) refuses to write a mailbox that is not owned by the
     recipient, so taking ownership of /var/mail on start-up broke local
-    delivery after the first restart (issue #104).
+    delivery after the first restart (issue wader/postfix-relay#104).
     """
     relay = postfix_factory()
 
@@ -118,8 +119,9 @@ def test_local_mailboxes_are_not_taken_over(postfix_factory):
     # local(8) appends before it releases the mailbox's dotlock, so the file
     # already holds the text a moment before the delivery agent has finished
     # and logged "status=sent". Restarting in that window can catch local(8)
-    # mid-delivery -- issue #372 was found from exactly that race, on a run
-    # unrelated to this test. Waiting for the log line closes it.
+    # mid-delivery -- issue wader/postfix-relay#372 was found from exactly that
+    # race, on a run unrelated to this test. Waiting for the log line closes
+    # it.
     wait_for_log(relay, 'status=sent')
 
     restart(relay)
@@ -132,7 +134,8 @@ def test_local_mailboxes_are_not_taken_over(postfix_factory):
 
 def test_a_stale_mailbox_lock_from_an_unclean_stop_is_cleared(postfix_factory):
     """A container killed mid local-delivery leaves a dotlock local(8) never
-    revisits, which wedges that mailbox for good (issue #372).
+    revisits, which wedges that mailbox for good (issue
+    wader/postfix-relay#372).
 
     mailbox_delivery_lock defaults to "fcntl, dotlock": local(8) locks the
     mailbox for the append and removes the lock when it is done. Simulating
@@ -292,7 +295,7 @@ def test_a_setting_postfix_cannot_serve_with_stops_the_container(postfix_factory
     it without a word and "postfix check" passes, but smtpd reads it at the
     start of every session and dies on it. The master keeps the port open
     throughout, so the health check has a running master and a listening
-    socket to look at and reports healthy (issue #206).
+    socket to look at and reports healthy (issue wader/postfix-relay#206).
     """
     relay = postfix_factory(env={'POSTFIX_error_notice_recipient': ''},
                             wait_ready=False)

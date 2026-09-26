@@ -1,8 +1,9 @@
 """SMTP authentication, on both sides of the relay.
 
-Clients authenticating to the relay (issues #69 and #79) and the relay
-authenticating to the server it hands the mail over to, which is what
-relaying through a provider such as gmail or sendgrid needs.
+Clients authenticating to the relay (issues wader/postfix-relay#69 and
+wader/postfix-relay#79) and the relay authenticating to the server it hands the
+mail over to, which is what relaying through a provider such as gmail or
+sendgrid needs.
 """
 
 import smtplib
@@ -264,7 +265,7 @@ def test_saslauthd_checks_passwords_as_root(authenticated_relay):
     which is what makes the mode on the directory above the access control
     rather than a detail. Asserted rather than described so that a future
     change dropping it to its own user is noticed here, and the README with
-    it. (issue #294)
+    it. (issue wader/postfix-relay#294)
     """
     processes = container_exec(authenticated_relay, ["ps", "-eo", "uid,comm", "--no-headers"])
     uids = [line.split()[0] for line in processes.splitlines()
@@ -306,7 +307,7 @@ def test_the_upstream_password_never_reaches_the_log(postfix_shared):
 
 
 def test_the_upstream_password_is_not_readable_by_every_user(postfix_shared):
-    """Regression test for issue #178.
+    """Regression test for issue wader/postfix-relay#178.
 
     It is a third party account's password in clear text. The DKIM keys and
     the SRS secret were both tightened to 600 on start-up, while this file --

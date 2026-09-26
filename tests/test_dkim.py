@@ -1,7 +1,8 @@
 """DKIM signing through OpenDKIM.
 
-DKIM is the part of the image users have had the most trouble with, see
-issues #14, #63, #78 and #92.
+DKIM is the part of the image users have had the most trouble with, see issues
+wader/postfix-relay#14, wader/postfix-relay#63, wader/postfix-relay#78 and
+wader/postfix-relay#92.
 """
 
 import re
@@ -47,7 +48,7 @@ def test_the_private_key_is_only_readable_by_opendkim(postfix_factory):
 
 
 def test_the_directories_holding_the_keys_are_secured_too(postfix_factory):
-    """Regression test for issue #92.
+    """Regression test for issue wader/postfix-relay#92.
 
     opendkim walks the whole path down to a key and refuses one it could reach
     through a directory other users can write, naming that directory rather
@@ -192,8 +193,8 @@ def test_keys_survive_recreating_the_container(docker_volume, postfix_factory, m
 def test_milter_settings_are_left_alone_when_set_explicitly(postfix_factory):
     """Enabling DKIM must not overwrite milter settings the user set.
 
-    Regression test for issue #134: the defaults are only there to save the
-    user from having to configure the milter themselves.
+    Regression test for issue wader/postfix-relay#134: the defaults are only
+    there to save the user from having to configure the milter themselves.
     """
     relay = postfix_factory(env={
         'OPENDKIM_DOMAINS': 'example.com',
@@ -355,7 +356,8 @@ def test_the_domain_list_may_be_written_over_several_lines(postfix_shared):
 
 def test_a_comma_in_the_domain_list_is_refused(postfix_factory):
     """OPENDKIM_DOMAINS is whitespace-separated, and a comma is an ordinary
-    character in a domain name to the parsing that reads it (issue #340).
+    character in a domain name to the parsing that reads it (issue
+    wader/postfix-relay#340).
 
     Two of this image's other list variables -- POSTFIX_mynetworks,
     POSTSRSD_SRS_EXCLUDE_DOMAINS -- are comma-separated, which is what makes a
