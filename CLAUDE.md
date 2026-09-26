@@ -38,7 +38,7 @@ which is where contributor branches lived then.
 | `pytest.ini` | `addopts = -n auto --dist loadfile --maxprocesses 4` and one registered marker, `smoke`. No `testpaths`, no `filterwarnings`, no `xfail_strict`. |
 | `.dockerignore` | Keeps `.git`, `README.md`, `SECURITY.md`, `tests`, `pytest.ini`, `CLAUDE.md` and `.claude` out of the build context. Not `LICENSE`: the image has to carry it, so it has to reach the context. |
 | `.claude/settings.json` | Registers the `SessionStart` hook below. Nothing else. |
-| `.claude/hooks/session-start.sh` | Starts the docker daemon and installs `tests/requirements.txt`, because a Claude Code on the web container has neither and both gates need them. Guarded on `CLAUDE_CODE_REMOTE=true`, so a local checkout is untouched, and best-effort: a failed step explains itself on stderr and the hook still exits 0, so check stderr before believing a build or test failure. Before either, and only where `origin` is `tigerblue77`'s repository, it sets the repository-local identity a commit here needs: `Claude <noreply@anthropic.com>` as the author and a `git signoff` alias carrying the maintainer's `Signed-off-by` — see [Conventions](#conventions). On a fork it sets nothing and says so on stdout. |
+| `.claude/hooks/session-start.sh` | Starts the docker daemon and installs `tests/requirements.txt`, because a Claude Code on the web container has neither and both gates need them. Guarded on `CLAUDE_CODE_REMOTE=true`, so a local checkout is untouched, and best-effort: a failed step explains itself on stderr and the hook still exits 0, so check stderr before believing a build or test failure. Before either, and only where `origin` is `tigerblue77`'s repository, it sets the repository-local identity a commit here needs: `Claude <noreply@anthropic.com>` as the author and a `git signoff` alias carrying the maintainer's `Signed-off-by` — see [Conventions](#conventions). On the maintainer's copy it also reminds the session, on stdout, that an issue or pull request opened here is assigned to `tigerblue77` and is never a draft; on a fork it sets nothing, says nothing of that rule, and says so. |
 | `tests/__init__.py` | Empty; makes `tests` a package, which is what lets `conftest.py` name plugins as `tests.fixtures.*` and lets modules do `from tests.helpers import …`. pytest therefore has to be run from the repo root. There is no `tests/fixtures/__init__.py`. |
 | `tests/conftest.py` | Registers the four fixture modules as pytest plugins, and defines the failure plumbing: `print_log_on_failure`, an autouse `shared_container_logs` fixture, and a `pytest_runtest_makereport` wrapper hook that stashes the report on the item. |
 | `tests/helpers.py` | The shared vocabulary — `poll_until`, `once_across_workers`, `wait_for_smtp`, `send`, `container_exec`, `postconf`, `listening_ports`, `exit_code_within` and the rest. Imported by every test module but `test_sendmail.py`, `test_ruleset.py`, `test_ci.py`, `test_scan.py` and `test_sign_off.py`, and by three of the four fixture modules. `file_missing` is the one that cannot be spelled with `container_exec`, which fails on a non-zero exit: asking whether a path is absent needs the exit code, not the output. |
@@ -565,6 +565,26 @@ Notes a contributor will hit:
   wader/postfix-relay#191 was about — and a person pasted pre-filled links
   instead; that is why the older history carries forms and links rather than
   bot-authored issues.
+- **Open every issue and pull request assigned to `tigerblue77`, and never as
+  a draft.** The same rule holds in every repository of this maintainer, and
+  Dell_iDRAC_fan_controller_Docker is where it was written first. Both are
+  fields on the call that creates the thing, and the session that would come
+  back to repair them afterwards has ended by then. Draft is the half with a
+  price on it: `auto_update_pull_request_branches.yml` skips drafts
+  deliberately, so a pull request opened as one is the pull request "Require
+  branches to be up to date" leaves further behind `master` at every merge,
+  owing a hand-pressed *Update branch* at the moment somebody wanted to merge
+  it — and it has to be converted before it can be merged at all, so the state
+  buys nothing here. A session's harness may say to open a draft; this rule is
+  the answer to that. Unassigned is quieter and costs the same way: the
+  maintainer's *Assigned* list is where the work is scheduled, and what is not
+  on it has to be remembered instead. The session-start hook says both at the
+  start of every Claude Code on the web session, and `tests/test_sign_off.py`
+  holds it to that. **This governs the maintainer's sessions, not everyone
+  who clones the repository**: the hook says it only where `origin` is
+  `tigerblue77`'s, and says nothing of it on a fork. A contributor's pull
+  request is theirs to assign and theirs to open as a draft, which is what the
+  branch updater's filter is there to protect.
 - **Text bound for GitHub is not wrapped.** Issue bodies, pull request bodies
   and comments go in as long lines and let GitHub reflow them to whatever width
   the reader has; wrapped at 79 columns the way this file is, they render as a
