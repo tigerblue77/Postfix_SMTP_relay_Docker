@@ -134,3 +134,24 @@ def test_dependabot_merges_by_a_method_the_ruleset_allows():
         f"{AUTO_MERGE.name} merges by {methods[0]!r}, which the ruleset does "
         f"not allow; it allows {sorted(allowed)}"
     )
+
+
+def test_strict_mode_has_something_updating_branches():
+    """"Require branches to be up to date" blocks every pull request `master`
+    has moved past until its branch is updated, and nothing here gets a merge
+    queue, which needs an organisation-owned repository. Without the workflow
+    that presses *Update branch* after each merge, turning strict mode on
+    leaves that to a person for every open pull request, Dependabot's
+    included.
+    """
+    checks = [r for r in ruleset()["rules"] if r["type"] == "required_status_checks"]
+    if not checks[0]["parameters"]["strict_required_status_checks_policy"]:
+        return
+    updater = WORKFLOWS / "auto_update_pull_request_branches.yml"
+    assert updater.exists(), (
+        "the ruleset requires branches to be up to date, and nothing updates them"
+    )
+    triggers = yaml.safe_load(updater.read_text())[True]
+    assert triggers["push"]["branches"] == ["master"], (
+        f"{updater.name} has to run on every push to master, got {triggers}"
+    )
