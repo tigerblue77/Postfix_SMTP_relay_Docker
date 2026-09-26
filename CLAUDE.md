@@ -19,10 +19,14 @@ through environment variables, which the `run` entrypoint translates into
 config files at container start. A second script, `healthcheck`, is what
 docker's `HEALTHCHECK` invokes.
 
-Published as `mwader/postfix-relay`. Issue and pull request numbers cited below
-are this repository's own tracker; contributor branches live in forks, which is
-why the merge commits from before `master` required a linear history name
-someone else's namespace.
+Published as `tigerblue77/postfix_smtp_relay`; until September 2026 it was
+published as `mwader/postfix-relay` from
+[wader/postfix-relay](https://github.com/wader/postfix-relay), which this
+repository started as a fork of and whose whole history it carries. Numbers
+from that tracker are written `wader/postfix-relay#NNN` wherever they are
+cited; a bare `#NNN` is this repository's own. The merge commits from before
+`master` required a linear history name branches in forks of that repository,
+which is where contributor branches lived then.
 
 ## Layout
 
@@ -220,7 +224,7 @@ nothing to report, so including it can only go red on a future edit to it.
 That is the whole reason it is there — it is no part of what ships, but it is
 what stands a session up, so when it breaks it breaks these gates rather than
 the image, and it breaks them quietly: the hook exits 0 whatever happens and
-says so only on stderr. (issue #303)
+says so only on stderr. (issue wader/postfix-relay#303)
 
 With shellcheck 0.11.0, which is the version `lint.yml` pins:
 
@@ -254,38 +258,38 @@ under an unrelated pull request. Nothing bumps that pin — moving to a newer
 shellcheck is a deliberate edit, the way a base-image suite change is.
 
 `tests/` is all the python in the tree, and `lint.yml` gates it at
-`--select F,B` — pyflakes and bugbear — as the **Ruff** check. The same decision
-made twice: those are the rules that find code which cannot work rather than
-code someone would write differently, and they are what the suite passes with
-no edit to any `.py` file. `B` was added by #304 because it costs nothing here
-and buys `B006`, a mutable default argument — a defect that survives review and
-then bites once per process rather than once per call. `B` is the bugbear
-linter and not every code starting with that letter: measured with
-`--ignore-noqa`, `--select B` does not reach the `BLE001` below, which
-`--select BLE` does. The one worth naming is `F811`, a test function replaced
-by a later one of the same name — pytest collects the second, the first one's
-assertions never run, and nothing says so. What `F` does *not* buy is worth
-knowing too: a fixture nobody requests is invisible to every pyflakes-family
-tool, a helper whose signature drifted needs pylint, and a module-level
-function nobody calls is seen at no ruff selection at all, `ALL` included —
-pyflakes reports unused imports and unused locals, not that. (#268, which
-asked for the gate, names all three as the thing it would catch.) The tree had
-one of those, `file_missing`, until #305 gave it the caller it was written
-for.
+`--select F,B` — pyflakes and bugbear — as the **Ruff** check. The same
+decision made twice: those are the rules that find code which cannot work
+rather than code someone would write differently, and they are what the suite
+passes with no edit to any `.py` file. `B` was added by wader/postfix-relay#304
+because it costs nothing here and buys `B006`, a mutable default argument — a
+defect that survives review and then bites once per process rather than once
+per call. `B` is the bugbear linter and not every code starting with that
+letter: measured with `--ignore-noqa`, `--select B` does not reach the `BLE001`
+below, which `--select BLE` does. The one worth naming is `F811`, a test
+function replaced by a later one of the same name — pytest collects the second,
+the first one's assertions never run, and nothing says so. What `F` does *not*
+buy is worth knowing too: a fixture nobody requests is invisible to every
+pyflakes-family tool, a helper whose signature drifted needs pylint, and a
+module-level function nobody calls is seen at no ruff selection at all, `ALL`
+included — pyflakes reports unused imports and unused locals, not that.
+(wader/postfix-relay#268, which asked for the gate, names all three as the
+thing it would catch.) The tree had one of those, `file_missing`, until
+wader/postfix-relay#305 gave it the caller it was written for.
 
 Widening past those two is a deliberate edit and it is not free: `E` imposes a
 line length the suite has never had, `I` reorders the imports of most of the
-files that have any, and `ruff format` would rewrite nearly all of them, a large
-share of the diff being only `'` to `"`. None of that is a defect today, and the
-measured menu — every selection with its finding count, so the next person need
-not re-derive it — is #304. Deliberately not repeated here: those counts move
-with every merge, and what they are being used to say does not. The selection
-is written out rather than left to ruff's default for the same reason the
-version is pinned: on this tree, unchanged, that default finds a couple of
-things under ruff 0.15.8 and more than ten times as many under 0.16.6, while
-`F,B` is clean on both. A ratio rather than two counts, for the reason the
-sentence above gives: it is the gap that is being pointed at, and the gap does
-not move. Nothing bumps that pin either.
+files that have any, and `ruff format` would rewrite nearly all of them, a
+large share of the diff being only `'` to `"`. None of that is a defect today,
+and the measured menu — every selection with its finding count, so the next
+person need not re-derive it — is wader/postfix-relay#304. Deliberately not
+repeated here: those counts move with every merge, and what they are being used
+to say does not. The selection is written out rather than left to ruff's
+default for the same reason the version is pinned: on this tree, unchanged,
+that default finds a couple of things under ruff 0.15.8 and more than ten times
+as many under 0.16.6, while `F,B` is clean on both. A ratio rather than two
+counts, for the reason the sentence above gives: it is the gap that is being
+pointed at, and the gap does not move. Nothing bumps that pin either.
 
 There is still no linter *configuration* anywhere in the repo (no
 `.shellcheckrc`, `.hadolint.yaml`, `pyproject.toml`, `setup.cfg`, `tox.ini`,
@@ -307,7 +311,7 @@ display `name:`, so on an ordinary pull request it appears as a skipped
 | **Build Image** | `ci.yml` | buildx over `linux/amd64,linux/arm/v7,linux/arm64/v8`. Nothing is pushed on a PR, nor from any branch: the DockerHub login runs only on `master` and release tags, and the build step for everything else carries a literal `push: false` (invariant 38). But the build has to succeed on **all three** architectures. This is the gate that catches architecture-specific packaging problems. |
 | **Pytest** | `test.yml` | `ubuntu-latest`, Python 3.13, `pip install -r tests/requirements.txt`, `pytest --junitxml=junit/test-results.xml`. |
 | **Pytest (arm64)** | `test.yml` | The same, natively, on `ubuntu-24.04-arm`. |
-| **Pytest (arm/v7, emulated)** | `test.yml` | Pins the QEMU binfmt image, builds `linux/arm/v7` and runs `pytest -m smoke -n0` against it — four tests, and the only ones that ever start the image whose packaging differs. It ran on `master` and behind a `test-emulated` label until #273; the label is gone, and 42-152s against 174-275s for either native job is why it can be on the path a pull request waits on without lengthening it. |
+| **Pytest (arm/v7, emulated)** | `test.yml` | Pins the QEMU binfmt image, builds `linux/arm/v7` and runs `pytest -m smoke -n0` against it — four tests, and the only ones that ever start the image whose packaging differs. It ran on `master` and behind a `test-emulated` label until wader/postfix-relay#273; the label is gone, and 42-152s against 174-275s for either native job is why it can be on the path a pull request waits on without lengthening it. |
 | **Event File** | `test.yml` | Uploads the triggering event payload for the reporter. |
 | **ShellCheck** | `lint.yml` | Downloads shellcheck at the version and sha256 pinned in the job's `env:`, then `shellcheck -S error` over `run`, `healthcheck` and `.claude/hooks/session-start.sh`. Seconds, no docker. See [Lint](#lint) for why that threshold and not a stricter one. |
 | **Ruff** | `lint.yml` | The same shape, one job over: downloads ruff at the version and sha256 pinned in the job's `env:`, then `ruff check --no-cache --select F,B tests`. Seconds, no docker. See [Lint](#lint) for why that selection and not a wider one, and why it is spelled out rather than inherited. |
@@ -320,22 +324,23 @@ registry the way a user would and runs `pytest -m smoke` against it — the only
 checks that look at what a push to `master` published rather than at an image
 built from the tree. They are not alone in reaching the registry:
 `tests/test_upgrade.py` pulls a *released* tag, which is a different question
-(see 33). (issue #266) They pull it by *digest*, not by tag, and
-that is the whole of the arrangement below: what the build pushes is reachable
-under `sha-<commit>` and its digest, `latest` is not written by the build at
-all, and **Publish latest** — a fourth job, `needs` on all three — moves the
-tag onto that digest afterwards. So a failure here is no longer a report on an
-image users are already pulling: the tag stays where it was. (issue #272) That
-job asks the remote what `master` points at before it tags, and stands down
-when the answer is not the commit it built: master runs are deliberately not
-cancelled, so two merges close together overlap, and the property wanted is
-that `latest` follows `master`'s head rather than whichever run happened to
-finish last. Standing down is a green job, an unreadable answer is a red one —
-a tag that did not move must not be mistaken for a tag that was not supposed
-to. (issue #306) The amd64 one carries one step the other does not: each job
-pulls the entry of the manifest list matching its own runner, so a missing or
-mislabelled entry would leave both green while the architecture that lost it
-fails to pull at all — that step reads the list itself. (issue #284)
+(see 33). (issue wader/postfix-relay#266) They pull it by *digest*, not by tag,
+and that is the whole of the arrangement below: what the build pushes is
+reachable under `sha-<commit>` and its digest, `latest` is not written by the
+build at all, and **Publish latest** — a fourth job, `needs` on all three —
+moves the tag onto that digest afterwards. So a failure here is no longer a
+report on an image users are already pulling: the tag stays where it was.
+(issue wader/postfix-relay#272) That job asks the remote what `master` points
+at before it tags, and stands down when the answer is not the commit it built:
+master runs are deliberately not cancelled, so two merges close together
+overlap, and the property wanted is that `latest` follows `master`'s head
+rather than whichever run happened to finish last. Standing down is a green
+job, an unreadable answer is a red one — a tag that did not move must not be
+mistaken for a tag that was not supposed to. (issue wader/postfix-relay#306)
+The amd64 one carries one step the other does not: each job pulls the entry of
+the manifest list matching its own runner, so a missing or mislabelled entry
+would leave both green while the architecture that lost it fails to pull at all
+— that step reads the list itself. (issue wader/postfix-relay#284)
 
 A release tag reaches the same digest by a shorter road: it builds nothing.
 The commit a tag names has been on `master` first in every release this
@@ -353,7 +358,7 @@ the one thing nothing checked before.
 own rather than a scheduling one: `scan.yml` carries no `pull_request` trigger
 at all, so it reports no check here even as a skipped one. That is the point of
 it rather than an omission — invariant 34 — and it is why nothing above changes
-for a contributor. (issue #269)
+for a contributor. (issue wader/postfix-relay#269)
 
 Notes a contributor will hit:
 
@@ -371,27 +376,28 @@ Notes a contributor will hit:
   job that no longer reports blocks every pull request until someone with admin
   rights notices, and that test fails on the rename instead.
 - **Every check that is not on that list is off it for a reason**, and the
-  reasons are the point of writing the list down. **Test Results** is published by
-  `test-results.yml` on a `workflow_run` whose job carries
+  reasons are the point of writing the list down. **Test Results** is published
+  by `test-results.yml` on a `workflow_run` whose job carries
   `if: conclusion == 'success' || conclusion == 'failure'`, and `test.yml`
-  cancels in-flight runs on every ref but `master` — so a push that supersedes a
-  run leaves that job *skipped*, which github counts as a satisfied required
+  cancels in-flight runs on every ref but `master` — so a push that supersedes
+  a run leaves that job *skipped*, which github counts as a satisfied required
   check. A check that can pass by not running is the false assurance this list
   exists to remove, and its verdict is derived anyway: it republishes the junit
   files **Pytest** already failed on. **Event File** uploads an artifact and
   reaches no verdict at all. **Pytest (arm/v7, emulated)** runs on every pull
-  request since #273, and is still not required: its verdict comes from an
-  emulator, where a QEMU artefact reads like a real failure, so it reports and a
-  person looks rather than blocking a merge. Requiring it is a separate decision,
-  and `.github/rulesets/master.json` is where it would be recorded. And the two
-  **Verify Published Image** jobs, and **Publish latest** with them, have
-  nothing to report on a branch at all: what they check, and what one of them
-  then tags, is the image a push to `master` published, so on a pull request
-  they are skipped by the `if:` that keeps them off it. **Image Scan** goes
-  further and reports nothing at all: `scan.yml` has no `pull_request` trigger,
-  so there is no check to require, and adding one would put a vulnerability
-  database — an input that cannot be pinned, because pinning it defeats the
-  scan — in front of pull requests that cannot have caused its verdict.
+  request since wader/postfix-relay#273, and is still not required: its verdict
+  comes from an emulator, where a QEMU artefact reads like a real failure, so
+  it reports and a person looks rather than blocking a merge. Requiring it is a
+  separate decision, and `.github/rulesets/master.json` is where it would be
+  recorded. And the two **Verify Published Image** jobs, and **Publish latest**
+  with them, have nothing to report on a branch at all: what they check, and
+  what one of them then tags, is the image a push to `master` published, so on
+  a pull request they are skipped by the `if:` that keeps them off it. **Image
+  Scan** goes further and reports nothing at all: `scan.yml` has no
+  `pull_request` trigger, so there is no check to require, and adding one would
+  put a vulnerability database — an input that cannot be pinned, because
+  pinning it defeats the scan — in front of pull requests that cannot have
+  caused its verdict.
 - **The file is the whole live ruleset, and it has no bypass actors.** A file
   carrying the checks alone would drop every other protection the day it was
   imported in place of the live one. `master` cannot be deleted or
@@ -504,19 +510,15 @@ Notes a contributor will hit:
   correct behaviour, marked `xfail(strict=True)` with its issue. There are no
   current instances, and `xfail_strict` is not set in `pytest.ini`, so
   `strict=True` has to be written on each marker.
-- **Opening the issue or the pull request.** The integration a Claude session
-  here authenticates through can read this repository but cannot write to it:
-  creating an issue, creating a pull request and commenting on either all come
-  back `403 Resource not accessible by integration`, while `git push` to a
-  branch on a fork works. That is what issue #191 is about, and until it is
-  settled an agent cannot open the issue or the pull request its own change
-  needs. What it can do is push the branch and hand a person the link that
-  opens the form already filled in — `issues/new?title=…&body=…` for an issue,
-  `compare/master...<fork-owner>:<repo>:<branch>?expand=1` for a pull request.
-  Those links belong in the reply, written out in full: a file to download is
-  one step further from the browser, which is the one place they can be used.
-  Comments have no such link, so that case is the issue's own URL plus the text
-  to paste.
+- **Opening the issue or the pull request.** The Claude GitHub App is installed
+  on this repository, so a session opens the issue and the pull request its own
+  change needs, and comments on them, itself. It pushes its branch here rather
+  than to a fork, which is safe because a branch builds and publishes nothing
+  (invariant 38). In wader/postfix-relay a session could do neither — every
+  write came back `403 Resource not accessible by integration`, which is what
+  wader/postfix-relay#191 was about — and a person pasted pre-filled links
+  instead; that is why the older history carries forms and links rather than
+  bot-authored issues.
 - **Text bound for GitHub is not wrapped.** Issue bodies, pull request bodies
   and comments go in as long lines and let GitHub reflow them to whatever width
   the reader has; wrapped at 79 columns the way this file is, they render as a
@@ -545,15 +547,15 @@ changing any of them.
    recipient's uid/gid itself, and `/var/mail` is already `root:mail 2775`
    setgid in the base image, so nothing needs chowning. Now pinned by
    `tests/test_lifecycle.py`, which asserts `root:mail` across a restart.
-   (#104, commit `46ad15f`)
+   (wader/postfix-relay#104, commit `46ad15f`)
 
 2. **Every `postconf -e` in `dkimConfig` and `srsConfig` is wrapped in an
    `if [ -z "$POSTFIX_..." ]`** — two in `dkimConfig`, four in `srsConfig`, six
    of six. These guards are the only reason a user can override
    `milter_default_action`, `smtpd_milters` and the four canonical-map settings
    through the documented `POSTFIX_*` variables. Removing one silently
-   overwrites the user's value. (#134, commit `1748a61`; `tests/test_dkim.py`
-   pins the milter half.)
+   overwrites the user's value. (wader/postfix-relay#134, commit `1748a61`;
+   `tests/test_dkim.py` pins the milter half.)
 
 3. **`postsrsd` is installed conditionally** — `if apt-cache show postsrsd`.
    Debian trixie does not build it for armhf, so an unconditional install fails
@@ -565,7 +567,7 @@ changing any of them.
    three move together. The refusal also has to stay *above* the postfix start:
    a container that came up first and died second would have relayed the
    unrewritten mail, and `tests/test_srs.py` asserts the log is empty at the
-   point it exits. (`Closes #119`, commit `9755f7d`)
+   point it exits. (`Closes wader/postfix-relay#119`, commit `9755f7d`)
 
 4. **The `Dockerfile` deletes `/etc/postsrsd.secret` at build time**, and `run`
    generates a random one when the file is missing *or empty* (`[ ! -s ]`, so a
@@ -621,18 +623,19 @@ changing any of them.
    substitution either, which is what `greeting=$( … ) 2> /dev/null` reads as
    and is not, bash applying it to the assignment where it silences nothing;
    `smtpdPort` matches the command on `$8`, master.cf's command column, and not
-   on `$NF`: a service carries its `-o` options after the command, which is what
-   `POSTFIXMASTER_` variables are for, so `$NF` matched nothing at all and the
-   probe silently did not run on exactly the relays that had been configured.
-   `smtpdPort` also deliberately skips an smtpd bound to a single address, which
-   may be there for something that does not answer this container. And
-   `smtpdAddress` reads `inet_interfaces` with `postconf -hx`, the *expanding*
-   form: a relay may serve only the address its clients reach it on, so greeting
-   loopback regardless refuses one that works, and `-h` alone hands the probe the
-   literal `$myhostname` that postfix's own stock main.cf suggests writing.
-   `healthcheck` does the opposite and checks every `inet` service including
-   address-bound ones — both resolve a named endpoint such as `submission`
-   through `getent services`. (issue #206, commit `1d6d8d3`; issue #221,
+   on `$NF`: a service carries its `-o` options after the command, which is
+   what `POSTFIXMASTER_` variables are for, so `$NF` matched nothing at all and
+   the probe silently did not run on exactly the relays that had been
+   configured. `smtpdPort` also deliberately skips an smtpd bound to a single
+   address, which may be there for something that does not answer this
+   container. And `smtpdAddress` reads `inet_interfaces` with `postconf -hx`,
+   the *expanding* form: a relay may serve only the address its clients reach
+   it on, so greeting loopback regardless refuses one that works, and `-h`
+   alone hands the probe the literal `$myhostname` that postfix's own stock
+   main.cf suggests writing. `healthcheck` does the opposite and checks every
+   `inet` service including address-bound ones — both resolve a named endpoint
+   such as `submission` through `getent services`. (issue
+   wader/postfix-relay#206, commit `1d6d8d3`; issue wader/postfix-relay#221,
    commit `e9017b0`)
 
 8. **`run` has no `set -e`, and that is still load-bearing** — but not for the
@@ -659,23 +662,24 @@ changing any of them.
    exits, so it reparents to pid 1 — this script — and bash has no job for it.
    `wait` returns for a job and not for a reparented child, so the bare `wait`
    this replaced watched one daemon out of five while the container went on
-   relaying when any of the other four died. Polling needs nothing beyond reading
-   `/proc` — signalling a daemon that dropped to its own user would need a
-   capability the README asks deployments to drop. What is watched is the
-   `supervised` list, appended to as each daemon is *confirmed* started, rather
-   than the environment read a second time; rsyslogd is the exception, added as
-   it is forked, because `wait -n` already watches it as the script's own job.
-   Both sleeps run in the background and are `wait`ed (the first with `wait -n`),
-   so a trapped SIGTERM is not postponed by a whole interval and rsyslogd's
-   death is noticed at once. `stopDaemons` is guarded by `$stopped`, runs on
-   both ways out, and stops rsyslogd last and waits for it so the others'
-   parting words still reach the container log; a daemon that dies on its own
-   exits 1 so an `on-failure` restart policy has something to act on. The
-   handler itself ends in `exit 0`, which is not a lost failure code: without
-   it a container signalled while it was still starting resumed start-up from
-   where the signal interrupted it and then reported the daemons it had just
-   stopped as daemons that would not start.
-   (issue #176, commit `cc23882`; the handler's exit, commit `e9017b0`)
+   relaying when any of the other four died. Polling needs nothing beyond
+   reading `/proc` — signalling a daemon that dropped to its own user would
+   need a capability the README asks deployments to drop. What is watched is
+   the `supervised` list, appended to as each daemon is *confirmed* started,
+   rather than the environment read a second time; rsyslogd is the exception,
+   added as it is forked, because `wait -n` already watches it as the script's
+   own job. Both sleeps run in the background and are `wait`ed (the first with
+   `wait -n`), so a trapped SIGTERM is not postponed by a whole interval and
+   rsyslogd's death is noticed at once. `stopDaemons` is guarded by `$stopped`,
+   runs on both ways out, and stops rsyslogd last and waits for it so the
+   others' parting words still reach the container log; a daemon that dies on
+   its own exits 1 so an `on-failure` restart policy has something to act on.
+   The handler itself ends in `exit 0`, which is not a lost failure code:
+   without it a container signalled while it was still starting resumed
+   start-up from where the signal interrupted it and then reported the daemons
+   it had just stopped as daemons that would not start. (issue
+   wader/postfix-relay#176, commit `cc23882`; the handler's exit, commit
+   `e9017b0`)
 
 10. **The saslauthd mux directory is created with
     `install -d -o root -g sasl -m 710`, below the
@@ -685,7 +689,7 @@ changing any of them.
     nothing a container ever runs — so the mode never reached the directory at
     all, leaving an unrate-limited password oracle reachable by any uid, and
     re-adding the override was an error on every restart. Both the tool and the
-    ordering matter. (issue #179, commit `259b2cb`)
+    ordering matter. (issue wader/postfix-relay#179, commit `259b2cb`)
 
 11. **`mkdir -p /var/spool/postfix/dev` exists only for queues bind-mounted
     from the host.** The directory ships in the image, empty, and is where
@@ -693,7 +697,8 @@ changing any of them.
     else recreates it: it has no `postfix-files` entry, so `postfix check` does
     not, and Debian's chroot resync only fills `etc/`, `lib/` and
     `usr/lib/sasl2`. Without it everything that connects to syslog after
-    chrooting is logged nowhere. (issue #180, commit `0697962`)
+    chrooting is logged nowhere. (issue wader/postfix-relay#180, commit
+    `0697962`)
 
 12. **In the generated `/etc/rsyslog.conf`, the `$template` /
     `$ActionFileDefaultTemplate` pair is written before the `/dev/stdout`
@@ -713,7 +718,7 @@ changing any of them.
     script down. Only the assignment is quoted, so the init script still splits
     `SRS_EXTRA_OPTIONS='-A -t60'` into two options. Two tests pin it — one
     sources the block with `sh` rather than matching text, one passes a value
-    with a space. (issue #177, commit `fca55e7`)
+    with a space. (issue wader/postfix-relay#177, commit `fca55e7`)
 
 14. **Only the envelope *sender* is rewritten by SRS**
     (`sender_canonical_classes=envelope_sender`) — extending that to headers
@@ -776,8 +781,8 @@ changing any of them.
     (`smtp_sasl_password_maps`), and postmap writes 644. Postfix opens its
     lookup tables in each daemon's pre-jail initialisation, while still root,
     so nothing needs to read them afterwards — this is the mode SASL_README
-    asks for on this exact file. (issue #178; pinned by `tests/test_secrets.py`
-    and `tests/test_sasl.py`)
+    asks for on this exact file. (issue wader/postfix-relay#178; pinned by
+    `tests/test_secrets.py` and `tests/test_sasl.py`)
 
 19. **`dkimConfig` chowns and chmods `/etc/opendkim/keys` itself on every
     start, not just the key files.** That directory is a declared `VOLUME`, so
@@ -886,7 +891,7 @@ changing any of them.
     runner's own architecture, so the refusal would otherwise turn it down for
     looking like whatever was left in the image store. It is a second named
     case, not a general opt-out: `POSTFIX_RELAY_ARCH` still has to match, and
-    nothing else gets past. (issue #266)
+    nothing else gets past. (issue wader/postfix-relay#266)
 
 31. **Base-image bumping is Dependabot's, not `wader/bump`'s.** `Bumpfile`,
     `.github/workflows/bump.yml` and the `# bump:` directive on line 1 of the
@@ -912,7 +917,7 @@ changing any of them.
     rather than repeating it, raising when the file is missing or has no
     `FROM` line: a fallback to a version written in the module would work
     perfectly and restore exactly the invisible constant this replaces.
-    (issue #235)
+    (issue wader/postfix-relay#235)
 
 33. **The image `tests/test_upgrade.py` upgrades *from* is a release, and the
     module asks that image what it can do rather than comparing versions.**
@@ -920,8 +925,8 @@ changing any of them.
     describes, and the same directory entry in `.github/dependabot.yml`
     already covers it — the fetcher lists a directory rather than a name.
     What is different is which tag it may hold.
-    `mwader/postfix-relay:latest` is rebuilt from `master` on every merge, so
-    on `master` it *is* the image under test and the upgrade is one to itself;
+    This image's own `latest` is rebuilt from `master` on every merge, so on
+    `master` it *is* the image under test and the upgrade is one to itself;
     it also moves with nothing in the tree recording that it did, which leaves
     a failure impossible to attribute. A release stays put until the line is
     edited, and it is what deployments actually run. The cost is that it lags
@@ -937,68 +942,65 @@ changing any of them.
     `POSTFIX_RELAY_IMAGE` names an image this run did not build — a foreign
     architecture, or the published one 30 now also admits — the machine's own
     would put the upgrade between two architectures and pass either way, which
-    is the silence 30 exists to stop. (issue #267)
+    is the silence 30 exists to stop. (issue wader/postfix-relay#267)
 
 34. **`scan.yml` has no `pull_request` trigger, uses no third-party action, and
-    passes `--ignore-unfixed`. All three look like something left out.**
-    The scan runs on a clock against the *published* image, because `ci.yml`
-    pushes nothing on a pull request — a scan there would examine an artifact
-    with no users while the one with eleven million pulls went unexamined — and
-    because a red would never be attributable to the diff: `ci.yml` builds only
-    what the tree contains, so a pull request touching `run`, a fixture or the
+    passes `--ignore-unfixed`. All three look like something left out.** The
+    scan runs on a clock against the *published* image, because `ci.yml` pushes
+    nothing on a pull request — a scan there would examine an artifact with no
+    users while the one with eleven million pulls went unexamined — and because
+    a red would never be attributable to the diff: `ci.yml` builds only what
+    the tree contains, so a pull request touching `run`, a fixture or the
     README cannot introduce a Debian CVE, and its author holds no lever, the
     remedy being a base bump `dependabot.yml` deliberately keeps out of
-    auto-merge. `lint.yml`'s header already states the rule this follows —
-    an unpinnable input must not fail somebody's unrelated pull request — and a
+    auto-merge. `lint.yml`'s header already states the rule this follows — an
+    unpinnable input must not fail somebody's unrelated pull request — and a
     vulnerability database is that input by construction, since pinning it is
     the same as not running the scan. Promoting this to a required check means
-    answering that, not assuming it.
-    Trivy is a checksummed release download rather than
-    `aquasecurity/trivy-action` because that wrapper was compromised on
-    2026-03-19, when 76 of its 77 version tags were force-pushed to a
-    credential stealer — a tag pin would not have helped, and the job needs no
-    checkout, no buildx and no QEMU, so it costs one `curl` to skip the
-    dependency entirely -- and having no checkout is why the two `gh` steps set
-    `GH_REPO`: `gh` resolves the repository it acts on from `--repo`, then that
-    variable, then the working directory's git remotes, and with nothing
-    checked out there are none. Nothing bumps that pin, and unusually little is lost
-    by that: the database is fetched fresh on every run and is what carries the
-    signal.
-    The **Verify Published Image** jobs in `ci.yml` look at the same artefact
-    and do not overlap with this: they run on a push to `master`, so they say
-    whether what was just published works, while this says whether what has
-    been sitting there since has gone stale. The window this covers is exactly
-    the one no push happens in.
-    `--ignore-unfixed` is what makes the result mean anything. Without it the
-    job reports around 290 findings Debian has assessed as not warranting a
-    stable update and nobody here can close. The largest single group of them,
-    68 of 287 rows when this was written, is perl -- in the image only so the
-    manually-invoked `qshape` keeps working (invariant 25), and executed by no
-    relaying container. With it, a red run
-    says exactly one thing: Debian shipped a fix the published image lacks.
-    It is expected to be green — it was when it was written, `trivy` and
-    `grype` both reporting zero fixable findings and `apt-get -s full-upgrade`
-    inside the published image agreeing.
-    What a `no-cache` rebuild publishes is held to the whole suite rather
-    than to the four smoke tests a merge is. Such a rebuild is a
-    `workflow_dispatch` of `ci.yml`, and `test.yml` is started by a push to
-    `master`, by a pull request or by a dispatch of its own — never by that
-    one — so the suite ran nowhere for a rebuild, and **Verify Published
-    Image**'s four smoke tests per architecture were the only thing that
-    looked at the image before **Publish latest** moved the tag onto it. That
-    is the wrong way round: a rebuild is dispatched precisely because the
-    archive moved under a tree nobody touched, so its package set is the one
-    thing about the image the suite has never seen, where a merge changes the
-    tree the suite is built to test. Both jobs now branch on
-    `inputs.no-cache`, which is minutes instead of seconds on a job that runs
-    only when the scan or a person asked for a rebuild.
-    The `no-cache` dispatch input on `ci.yml` is the other half and does not
-    stand alone: the apt install is unversioned, so a build resolves current
-    archive versions for every package the image carries -- see invariant 37
-    for the "every", which took longer to be true than this paragraph did --
-    but `cache-from`/`cache-to` make that layer a cache hit until the `FROM`
-    line moves. Without the input, the only answer to a finding is to wait two
-    to three weeks for the next `trixie-<date>-slim` tag. (issue #269)
+    answering that, not assuming it. Trivy is a checksummed release download
+    rather than `aquasecurity/trivy-action` because that wrapper was
+    compromised on 2026-03-19, when 76 of its 77 version tags were force-pushed
+    to a credential stealer — a tag pin would not have helped, and the job
+    needs no checkout, no buildx and no QEMU, so it costs one `curl` to skip
+    the dependency entirely -- and having no checkout is why the two `gh` steps
+    set `GH_REPO`: `gh` resolves the repository it acts on from `--repo`, then
+    that variable, then the working directory's git remotes, and with nothing
+    checked out there are none. Nothing bumps that pin, and unusually little is
+    lost by that: the database is fetched fresh on every run and is what
+    carries the signal. The **Verify Published Image** jobs in `ci.yml` look at
+    the same artefact and do not overlap with this: they run on a push to
+    `master`, so they say whether what was just published works, while this
+    says whether what has been sitting there since has gone stale. The window
+    this covers is exactly the one no push happens in. `--ignore-unfixed` is
+    what makes the result mean anything. Without it the job reports around 290
+    findings Debian has assessed as not warranting a stable update and nobody
+    here can close. The largest single group of them, 68 of 287 rows when this
+    was written, is perl -- in the image only so the manually-invoked `qshape`
+    keeps working (invariant 25), and executed by no relaying container. With
+    it, a red run says exactly one thing: Debian shipped a fix the published
+    image lacks. It is expected to be green — it was when it was written,
+    `trivy` and `grype` both reporting zero fixable findings and
+    `apt-get -s full-upgrade` inside the published image agreeing. What a
+    `no-cache` rebuild publishes is held to the whole suite rather than to the
+    four smoke tests a merge is. Such a rebuild is a `workflow_dispatch` of
+    `ci.yml`, and `test.yml` is started by a push to `master`, by a pull
+    request or by a dispatch of its own — never by that one — so the suite ran
+    nowhere for a rebuild, and **Verify Published Image**'s four smoke tests
+    per architecture were the only thing that looked at the image before
+    **Publish latest** moved the tag onto it. That is the wrong way round: a
+    rebuild is dispatched precisely because the archive moved under a tree
+    nobody touched, so its package set is the one thing about the image the
+    suite has never seen, where a merge changes the tree the suite is built to
+    test. Both jobs now branch on `inputs.no-cache`, which is minutes instead
+    of seconds on a job that runs only when the scan or a person asked for a
+    rebuild. The `no-cache` dispatch input on `ci.yml` is the other half and
+    does not stand alone: the apt install is unversioned, so a build resolves
+    current archive versions for every package the image carries -- see
+    invariant 37 for the "every", which took longer to be true than this
+    paragraph did -- but `cache-from`/`cache-to` make that layer a cache hit
+    until the `FROM` line moves. Without the input, the only answer to a
+    finding is to wait two to three weeks for the next `trixie-<date>-slim`
+    tag. (issue wader/postfix-relay#269)
 
 35. **The trailing underscore in `${!POSTFIX_*}` is what keeps the two
     `postconf` loops apart.** Bash's `${!prefix*}` is a literal prefix test on
@@ -1010,208 +1012,203 @@ changing any of them.
     so `POSTFIXMASTER_submission__inet` lands in `main.cf` as
     `ASTER_submission__inet`. Nothing loud happens: the service is still added
     correctly by the second loop, the container comes up healthy and relays,
-    and the only trace is one `postconf: warning: unused parameter`. What
-    makes it more than untidy is invariant 17 — a `POSTFIXMASTER_<name>_FILE`
-    secret is resolved *before* these loops, so the same edit writes a
-    resolved credential into `main.cf`.
-    `tests/test_config.py` asserts a `POSTFIXMASTER_` variable leaves no trace
-    there, which fails under that edit and passes today. (issue #314)
+    and the only trace is one `postconf: warning: unused parameter`. What makes
+    it more than untidy is invariant 17 — a `POSTFIXMASTER_<name>_FILE` secret
+    is resolved *before* these loops, so the same edit writes a resolved
+    credential into `main.cf`. `tests/test_config.py` asserts a
+    `POSTFIXMASTER_` variable leaves no trace there, which fails under that
+    edit and passes today. (issue wader/postfix-relay#314)
 
-36. **`scan.yml` dispatches `ci.yml` itself, up to `MAX_REBUILD_ATTEMPTS`
-    times per finding, and then stops rather than trying forever.** The
-    `no-cache` rebuild invariant 34 describes as the remedy used to wait for
-    someone to read the issue and tick the box by hand; the "Open or retry the
-    finding issue" step now does it, with `gh workflow run ci.yml --ref master
-    -f no-cache=true` under the `actions: write` permission added alongside
-    `issues: write` for exactly this. Three by default: enough for a rebuild
-    that failed for an unrelated reason — a runner hiccup, a registry blip —
-    to get two more days to clear on its own before anyone has to look. The
-    attempts land at roughly 0h, 24h and 48h, but the give-up comment arrives
-    at about 72h, because the run that reaches the cap is the one that posts
-    it; and "days" carries about an hour and a half of slack each way, the
-    measured gap between scheduled runs being 22h45m to 25h37m rather than 24h.
-    The count `steps.scan.outputs.count` carries is no use for pacing this: it
-    stays non-zero on every scan the issue remains open for, including the
-    ones that already gave up, so gating the dispatch on it would be the
-    "daily cron that commented every morning" mistake the step already avoids
-    for the issue itself, spent on compute instead of noise. What paces it
-    instead is state the job has nowhere else to keep, since nothing here
-    checks the repository out and a label has to already exist in the
-    repository before `gh issue edit --add-label` can set it: an HTML comment
-    at the end of the issue body carrying the count — and, since the
-    per-finding change further down, the ids it was spent on — spelled out
-    below where that change is described,
-    written on create, bumped by one on every retry, and bumped one further
-    on the run that reaches the cap so that run's give-up comment does not
-    repeat on every later scan while the issue stays open. That last part
-    matters as much as the retrying does — the issue is never closed by
-    giving up, only by the scan coming back clean, so a finding that outlasts
-    every automatic attempt is still exactly as visible as one the first
-    attempt never got the chance to see. Nothing here needed a change to
-    `ci.yml`: `no-cache` was already a `workflow_dispatch` input, wired into
-    both build steps, waiting for something to set it other than a person in
-    the Actions tab.
-    The marker is also read back after it is written, by `confirmStamp`, and
-    a mismatch exits 1 rather than going on. It is the only state this job
-    has and it lives in a field other things write to — #381 acquired an
-    assignee nothing here sets, 87 seconds after this step created it — and
-    losing it is silent by construction: a marker that is gone reads back as
-    attempt 0, so the budget restarts and the cap never engages. A run that
-    cannot record an attempt must not spend one, because nothing would then
-    stop it spending the next either.
-    Bumping the marker is `stampAttempts`, and it has to do two different
-    things depending on what is already there: `sed` substitute an existing
-    `rebuild-attempts=<n>` in place, or append a fresh one when the body has
-    none — which every issue this retry logic was merged onto still lacked.
-    The first version only did the substitute half, so on exactly that issue
-    `sed` matched nothing, wrote the body back unchanged, and the count read
-    back as 0 every single run: the cap that is the point of this invariant
-    never engaged, and the finding retried attempt 1 forever. Caught live,
-    on issue #376, the day this shipped — the simulated day-by-day state
-    machine that found the give-up path only ever started from a body this
-    step had itself just created, so it never exercised the one state every
-    pre-existing issue was actually in.
-    The dispatch also *waits*, and that half is not an optimisation. Firing
-    the rebuild and returning made the remedy automatic and left the
-    verification manual, because nothing in the tree could report back:
-    `ci.yml` holds no `issues` permission and touches the tracker in no step,
-    no `workflow_run` or `repository_dispatch` trigger starts this workflow,
-    and the close step reads the count from the scan this run already
-    performed — so the issue a finding opens could only ever be closed by a
-    *later* run of this workflow, and the only thing that starts one is the
-    next day's cron. Issue #381 is what that cost, measured: the rebuild this
-    step dispatched at 11:26 published an image with the fix at 11:33, and the
-    issue stayed open and the run stayed red for the twenty-four hours until
-    the next scheduled scan, over an image that was already clean. So the step
-    now polls for the run it started — `gh workflow run` returns no id and the
-    API offers no handle, so it takes two floors before dispatching, the newest
+36. **`scan.yml` dispatches `ci.yml` itself, up to `MAX_REBUILD_ATTEMPTS` times
+    per finding, and then stops rather than trying forever.** The `no-cache`
+    rebuild invariant 34 describes as the remedy used to wait for someone to
+    read the issue and tick the box by hand; the "Open or retry the finding
+    issue" step now does it, with
+    `gh workflow run ci.yml --ref master -f no-cache=true` under the
+    `actions: write` permission added alongside `issues: write` for exactly
+    this. Three by default: enough for a rebuild that failed for an unrelated
+    reason — a runner hiccup, a registry blip — to get two more days to clear
+    on its own before anyone has to look. The attempts land at roughly 0h, 24h
+    and 48h, but the give-up comment arrives at about 72h, because the run that
+    reaches the cap is the one that posts it; and "days" carries about an hour
+    and a half of slack each way, the measured gap between scheduled runs being
+    22h45m to 25h37m rather than 24h. The count `steps.scan.outputs.count`
+    carries is no use for pacing this: it stays non-zero on every scan the
+    issue remains open for, including the ones that already gave up, so gating
+    the dispatch on it would be the "daily cron that commented every morning"
+    mistake the step already avoids for the issue itself, spent on compute
+    instead of noise. What paces it instead is state the job has nowhere else
+    to keep, since nothing here checks the repository out and a label has to
+    already exist in the repository before `gh issue edit --add-label` can set
+    it: an HTML comment at the end of the issue body carrying the count — and,
+    since the per-finding change further down, the ids it was spent on —
+    spelled out below where that change is described, written on create, bumped
+    by one on every retry, and bumped one further on the run that reaches the
+    cap so that run's give-up comment does not repeat on every later scan while
+    the issue stays open. That last part matters as much as the retrying does —
+    the issue is never closed by giving up, only by the scan coming back clean,
+    so a finding that outlasts every automatic attempt is still exactly as
+    visible as one the first attempt never got the chance to see. Nothing here
+    needed a change to `ci.yml`: `no-cache` was already a `workflow_dispatch`
+    input, wired into both build steps, waiting for something to set it other
+    than a person in the Actions tab. The marker is also read back after it is
+    written, by `confirmStamp`, and a mismatch exits 1 rather than going on. It
+    is the only state this job has and it lives in a field other things write
+    to — wader/postfix-relay#381 acquired an assignee nothing here sets, 87
+    seconds after this step created it — and losing it is silent by
+    construction: a marker that is gone reads back as attempt 0, so the budget
+    restarts and the cap never engages. A run that cannot record an attempt
+    must not spend one, because nothing would then stop it spending the next
+    either. Bumping the marker is `stampAttempts`, and it has to do two
+    different things depending on what is already there: `sed` substitute an
+    existing `rebuild-attempts=<n>` in place, or append a fresh one when the
+    body has none — which every issue this retry logic was merged onto still
+    lacked. The first version only did the substitute half, so on exactly that
+    issue `sed` matched nothing, wrote the body back unchanged, and the count
+    read back as 0 every single run: the cap that is the point of this
+    invariant never engaged, and the finding retried attempt 1 forever. Caught
+    live, on issue wader/postfix-relay#376, the day this shipped — the
+    simulated day-by-day state machine that found the give-up path only ever
+    started from a body this step had itself just created, so it never
+    exercised the one state every pre-existing issue was actually in. The
+    dispatch also *waits*, and that half is not an optimisation. Firing the
+    rebuild and returning made the remedy automatic and left the verification
+    manual, because nothing in the tree could report back: `ci.yml` holds no
+    `issues` permission and touches the tracker in no step, no `workflow_run`
+    or `repository_dispatch` trigger starts this workflow, and the close step
+    reads the count from the scan this run already performed — so the issue a
+    finding opens could only ever be closed by a *later* run of this workflow,
+    and the only thing that starts one is the next day's cron. Issue
+    wader/postfix-relay#381 is what that cost, measured: the rebuild this step
+    dispatched at 11:26 published an image with the fix at 11:33, and the issue
+    stayed open and the run stayed red for the twenty-four hours until the next
+    scheduled scan, over an image that was already clean. So the step now polls
+    for the run it started — `gh workflow run` returns no id and the API offers
+    no handle, so it takes two floors before dispatching, the newest
     `workflow_dispatch` ci run id on `master` and a timestamp, and claims the
     oldest run above both — waits for that run on a bound of its own well
-    inside the job's, and hands the next step a conclusion. Every way out other than `success`
-    leaves the re-scan unrun and the run red, which is exactly what this job
-    did before.
-    What the re-scan then compares is digests, not only counts. **Publish
-    latest** stands down *without failing* when `master`'s head moved under
-    it, so a ci run can conclude `success` having left `latest` exactly where
-    it was; the count would come back unchanged and reporting that as "the
-    rebuild did not fix it" would be a claim about a rebuild that never
-    reached the tag. And a clean re-scan spares the run rather than only
-    closing the issue: the failed-run email exists to fetch a person, and a
-    run that applied the remedy, watched it land and closed its own issue has
-    nobody to fetch — a red nobody acts on is the "teach everyone to filter
-    it" failure this invariant already avoids for comments, spent on attention
-    instead. The record is the issue, opened and closed.
-    The condition that decides between those two reads a *word*, and that is
-    the single most load-bearing character of the change. A step that did not
-    run contributes no outputs, so `steps.rescan.outputs.count` is Null rather
-    than the empty string it reads as — and github's comparison operators
-    coerce a mismatched pair to numbers, where Null is 0, the string `'0'` is
-    0, and the empty string is 0 as well. `steps.rescan.outputs.count == '0'`
-    is therefore *true* on precisely the paths where the re-scan did not
-    happen: a rebuild that failed, was cancelled, never appeared, outlasted
-    the wait, or published nothing the tag points at. Written that way the job
-    closed a live vulnerability issue saying the image "no longer has a
-    vulnerability with a fix available" and went green — six of the nine
-    reachable end states inverted, all six of them the failure states, which
-    is strictly worse than the twenty-four hours this was written to remove.
-    `'clean'` parses as NaN, NaN equals nothing including itself, so a word
-    cannot do that. The older conditions in this file are safe by the same
-    accident and not by design (`== 'true'`, `== 'success'`), which is why
-    `tests/test_scan.py` now fails on any condition comparing a skippable
-    step's output against a numeric literal rather than on these two by name.
-    Two smaller things the same review settled. The timestamp floor above is
-    one of them, and it is there because an id floor alone reads 0 when the
-    listing comes back empty — no prior dispatch on a fresh fork, or one
-    transient API failure — and the `min` then claims the oldest run in the
-    window rather than the newest: one that finished days ago, over the image
-    just scanned, with conclusion `success`. And the wait's bound has to stay
-    well inside the job's `timeout-minutes`, because a job killed by that is
-    *cancelled* rather than failed, and github's notification for a scheduled
-    workflow fires on failure: the one way out of here that would turn the
-    alarm off instead of leaving it red.
-    The attempt is spent by the step above before this one learns anything, so
-    a rebuild that never ran used to cost a day of budget anyway. It is given
-    back now, and only where the rebuild demonstrably never built: `cancelled`
-    — `ci.yml`'s concurrency group puts a dispatch on `master` in the same
-    group as the push run for that commit and cancels it when a third arrives
-    — and the case where no run ever appeared. A rebuild that *failed* is not
-    refunded, because that is the runner hiccup the three attempts are sized
-    for; nor are `timeout` and `unreadable`, where the run may be building this
-    minute and only this job stopped looking. The counter is restored to the
-    value the issue step read rather than decremented from whatever is found,
-    since the body is editable by other things, and the refund comments once:
-    the step above has already said an attempt was dispatched, and walking that
-    back in silence leaves the issue claiming a count it no longer has.
-    Per *finding* is the counter's whole claim, and for a while it was not
-    true of the code, which matched the issue on its title alone and held one
-    open until the scan was clean about everything. A vulnerability arriving
-    while the issue was open therefore inherited whatever budget the previous
-    one had already spent, and one arriving on day three reached the give-up
-    branch having had no rebuild attempted for it at all — the exact state
-    this invariant exists to prevent, reached faster than by any of the routes
-    it does describe. The marker now carries the ids as well as the count
-    (`<!-- rebuild-attempts=<n> seen=<CVE,CVE,…> -->`), and an id the issue has
-    not been retried for before restarts the budget. Ids only accumulate, so a
-    finding that is fixed and returns is not handed a second budget, and the
-    cron still paces the whole thing at one rebuild a day however many
-    findings arrive. A marker written before this carries no ids, which reads
-    as every current finding being unseen and restarts the budget once: what
-    those attempts were spent on is recorded nowhere, so the only thing that
-    can be said about today's findings is that nothing says they were covered.
-    A step and not a second trigger, which is the obvious fix and is the
-    wrong one. The pacing this invariant rests on is a property of the
-    *trigger list*, not of the cap: nothing in the step compares timestamps
-    or days, it simply bumps the counter once per scan run that finds the
-    issue open, so "three attempts" means "three days" only while a daily
-    cron is the sole automatic trigger. A `workflow_run` listener on `ci`
-    would silently turn a three-day budget into a three-event one. It is
-    worse than that arithmetic suggests, twice over. `ci.yml` triggers on
-    `push` to every branch, on `pull_request` and on `workflow_dispatch`, so
-    any contributor's branch push during an open finding would consume an
-    attempt — and consume it by dispatching `ci.yml` on `master` with
-    `no-cache`, which runs **Publish latest** and moves the tag eleven
-    million pulls point at. A branch push acquiring that power is a much
-    larger change than the one being made. And chaining the scan to its own
-    rebuild spends all three attempts inside about twenty minutes rather than
-    across three days, which makes attempts two and three worthless on their
-    own terms: all three builds then `apt-get update` against the same
-    archive snapshot, so "the archive did not have the fix yet" — one of the
-    two failure modes the issue body names the retry for — stops being
-    something the retry can cover. Waiting inside the run buys the same
-    minutes-instead-of-a-day close without touching the trigger list at all.
-    (issue #381)
+    inside the job's, and hands the next step a conclusion. Every way out other
+    than `success` leaves the re-scan unrun and the run red, which is exactly
+    what this job did before. What the re-scan then compares is digests, not
+    only counts. **Publish latest** stands down *without failing* when
+    `master`'s head moved under it, so a ci run can conclude `success` having
+    left `latest` exactly where it was; the count would come back unchanged and
+    reporting that as "the rebuild did not fix it" would be a claim about a
+    rebuild that never reached the tag. And a clean re-scan spares the run
+    rather than only closing the issue: the failed-run email exists to fetch a
+    person, and a run that applied the remedy, watched it land and closed its
+    own issue has nobody to fetch — a red nobody acts on is the "teach everyone
+    to filter it" failure this invariant already avoids for comments, spent on
+    attention instead. The record is the issue, opened and closed. The
+    condition that decides between those two reads a *word*, and that is the
+    single most load-bearing character of the change. A step that did not run
+    contributes no outputs, so `steps.rescan.outputs.count` is Null rather than
+    the empty string it reads as — and github's comparison operators coerce a
+    mismatched pair to numbers, where Null is 0, the string `'0'` is 0, and the
+    empty string is 0 as well. `steps.rescan.outputs.count == '0'` is therefore
+    *true* on precisely the paths where the re-scan did not happen: a rebuild
+    that failed, was cancelled, never appeared, outlasted the wait, or
+    published nothing the tag points at. Written that way the job closed a live
+    vulnerability issue saying the image "no longer has a vulnerability with a
+    fix available" and went green — six of the nine reachable end states
+    inverted, all six of them the failure states, which is strictly worse than
+    the twenty-four hours this was written to remove. `'clean'` parses as NaN,
+    NaN equals nothing including itself, so a word cannot do that. The older
+    conditions in this file are safe by the same accident and not by design
+    (`== 'true'`, `== 'success'`), which is why `tests/test_scan.py` now fails
+    on any condition comparing a skippable step's output against a numeric
+    literal rather than on these two by name. Two smaller things the same
+    review settled. The timestamp floor above is one of them, and it is there
+    because an id floor alone reads 0 when the listing comes back empty — no
+    prior dispatch on a fresh fork, or one transient API failure — and the
+    `min` then claims the oldest run in the window rather than the newest: one
+    that finished days ago, over the image just scanned, with conclusion
+    `success`. And the wait's bound has to stay well inside the job's
+    `timeout-minutes`, because a job killed by that is *cancelled* rather than
+    failed, and github's notification for a scheduled workflow fires on
+    failure: the one way out of here that would turn the alarm off instead of
+    leaving it red. The attempt is spent by the step above before this one
+    learns anything, so a rebuild that never ran used to cost a day of budget
+    anyway. It is given back now, and only where the rebuild demonstrably never
+    built: `cancelled` — `ci.yml`'s concurrency group puts a dispatch on
+    `master` in the same group as the push run for that commit and cancels it
+    when a third arrives — and the case where no run ever appeared. A rebuild
+    that *failed* is not refunded, because that is the runner hiccup the three
+    attempts are sized for; nor are `timeout` and `unreadable`, where the run
+    may be building this minute and only this job stopped looking. The counter
+    is restored to the value the issue step read rather than decremented from
+    whatever is found, since the body is editable by other things, and the
+    refund comments once: the step above has already said an attempt was
+    dispatched, and walking that back in silence leaves the issue claiming a
+    count it no longer has. Per *finding* is the counter's whole claim, and for
+    a while it was not true of the code, which matched the issue on its title
+    alone and held one open until the scan was clean about everything. A
+    vulnerability arriving while the issue was open therefore inherited
+    whatever budget the previous one had already spent, and one arriving on day
+    three reached the give-up branch having had no rebuild attempted for it at
+    all — the exact state this invariant exists to prevent, reached faster than
+    by any of the routes it does describe. The marker now carries the ids as
+    well as the count (`<!-- rebuild-attempts=<n> seen=<CVE,CVE,…> -->`), and
+    an id the issue has not been retried for before restarts the budget. Ids
+    only accumulate, so a finding that is fixed and returns is not handed a
+    second budget, and the cron still paces the whole thing at one rebuild a
+    day however many findings arrive. A marker written before this carries no
+    ids, which reads as every current finding being unseen and restarts the
+    budget once: what those attempts were spent on is recorded nowhere, so the
+    only thing that can be said about today's findings is that nothing says
+    they were covered. A step and not a second trigger, which is the obvious
+    fix and is the wrong one. The pacing this invariant rests on is a property
+    of the *trigger list*, not of the cap: nothing in the step compares
+    timestamps or days, it simply bumps the counter once per scan run that
+    finds the issue open, so "three attempts" means "three days" only while a
+    daily cron is the sole automatic trigger. A `workflow_run` listener on `ci`
+    would silently turn a three-day budget into a three-event one. It is worse
+    than that arithmetic suggests, twice over. `ci.yml` triggers on `push` to
+    every branch, on `pull_request` and on `workflow_dispatch`, so any
+    contributor's branch push during an open finding would consume an attempt —
+    and consume it by dispatching `ci.yml` on `master` with `no-cache`, which
+    runs **Publish latest** and moves the tag eleven million pulls point at. A
+    branch push acquiring that power is a much larger change than the one being
+    made. And chaining the scan to its own rebuild spends all three attempts
+    inside about twenty minutes rather than across three days, which makes
+    attempts two and three worthless on their own terms: all three builds then
+    `apt-get update` against the same archive snapshot, so "the archive did not
+    have the fix yet" — one of the two failure modes the issue body names the
+    retry for — stops being something the retry can cover. Waiting inside the
+    run buys the same minutes-instead-of-a-day close without touching the
+    trigger list at all. (issue wader/postfix-relay#381)
 
-37. **The `Dockerfile` runs `apt-get -y full-upgrade` before the named
-    install, and `apt-get -y autoremove --purge` after it.** Without them, a
-    `no-cache` rebuild — the remedy invariant 34 and 36 both dispatch — could
-    run any number of times and still ship a package Debian has already fixed,
-    for a reason neither the workflow nor `--no-cache` has any way to see:
+37. **The `Dockerfile` runs `apt-get -y full-upgrade` before the named install,
+    and `apt-get -y autoremove --purge` after it.** Without them, a `no-cache`
+    rebuild — the remedy invariant 34 and 36 both dispatch — could run any
+    number of times and still ship a package Debian has already fixed, for a
+    reason neither the workflow nor `--no-cache` has any way to see:
     `apt-get install <names>` only installs and upgrades the packages it is
     given and whatever new dependencies they pull in. It does not touch a
     package the base image already has installed that is not named here and
-    that nothing newly named needs a higher version of, however fresh the
-    index `apt-get update` just fetched is. `gzip`, `libpcre2-8-0` and
-    `libsqlite3-0` are exactly that today: preinstalled in
-    `debian:trixie-<date>-slim`, named nowhere in this file, and every one of
-    #376's automatic rebuilds on 2026-09-15 rebuilt the image, re-fetched a
-    current index, and shipped the same vulnerable versions anyway — measured
-    directly, not inferred: replaying this file's install by hand against the
-    pinned base, with a fresh `apt-get update`, left all three exactly where
-    the base image put them, and only `apt-get -y upgrade` on top moved them.
-    Invariant 34 already named the right check for this — "`apt-get -s
-    full-upgrade` inside the published image agreeing" that there was nothing
-    left — without the build itself ever performing it, so the gap was
-    between what verified the image and what built it, not something either
-    half got wrong alone. `full-upgrade` over plain `upgrade` because it is
-    also what actually clears a fix that requires a package split or a
-    dependency it did not have before, rather than leaving it half-applied;
-    `autoremove --purge` is the other half of that same case, for whatever
-    `full-upgrade` orphans by replacing it outright. Verified on the built
-    image: `apt list --upgradable` after this file's install is empty, `trivy
-    image --ignore-unfixed --severity HIGH,CRITICAL` against it reports zero
-    findings where it reported five before, and the full suite still passes
-    (256 passed, 2 skipped), so nothing either command removed was something
-    this image needed. (issue #376)
+    that nothing newly named needs a higher version of, however fresh the index
+    `apt-get update` just fetched is. `gzip`, `libpcre2-8-0` and `libsqlite3-0`
+    are exactly that today: preinstalled in `debian:trixie-<date>-slim`, named
+    nowhere in this file, and every one of wader/postfix-relay#376's automatic
+    rebuilds on 2026-09-15 rebuilt the image, re-fetched a current index, and
+    shipped the same vulnerable versions anyway — measured directly, not
+    inferred: replaying this file's install by hand against the pinned base,
+    with a fresh `apt-get update`, left all three exactly where the base image
+    put them, and only `apt-get -y upgrade` on top moved them. Invariant 34
+    already named the right check for this — "`apt-get -s full-upgrade` inside
+    the published image agreeing" that there was nothing left — without the
+    build itself ever performing it, so the gap was between what verified the
+    image and what built it, not something either half got wrong alone.
+    `full-upgrade` over plain `upgrade` because it is also what actually clears
+    a fix that requires a package split or a dependency it did not have before,
+    rather than leaving it half-applied; `autoremove --purge` is the other half
+    of that same case, for whatever `full-upgrade` orphans by replacing it
+    outright. Verified on the built image: `apt list --upgradable` after this
+    file's install is empty,
+    `trivy image --ignore-unfixed --severity HIGH,CRITICAL` against it reports
+    zero findings where it reported five before, and the full suite still
+    passes (256 passed, 2 skipped), so nothing either command removed was
+    something this image needed. (issue wader/postfix-relay#376)
 
 38. **A branch builds on all three architectures and publishes nothing, and
     no tag is named after the ref.** `ci.yml` used to push every build that

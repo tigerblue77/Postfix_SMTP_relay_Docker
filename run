@@ -315,11 +315,11 @@ srsConfig()
     # The value is single quoted because that init script is /bin/sh with
     # "set -e": unquoted, a value with a space in it is read as an assignment
     # followed by a command, and the command not being found takes the init
-    # script down with it (issue #177). Embedded single quotes are closed,
-    # escaped and reopened, which is what the replacement below does. Only the
-    # assignment is quoted: the init script still splits the value into words
-    # when it builds the daemon arguments, so SRS_EXTRA_OPTIONS='-A -t60'
-    # still reaches postsrsd as two options.
+    # script down with it (issue wader/postfix-relay#177). Embedded single
+    # quotes are closed, escaped and reopened, which is what the replacement
+    # below does. Only the assignment is quoted: the init script still splits
+    # the value into words when it builds the daemon arguments, so
+    # SRS_EXTRA_OPTIONS='-A -t60' still reaches postsrsd as two options.
     sed -i "/$srsMarker/,\$d" /etc/default/postsrsd
     echo "$srsMarker" >> /etc/default/postsrsd
     for e in ${!POSTSRSD_*} ; do
@@ -377,7 +377,7 @@ rm -f /var/mail/*.lock
 # in postfix-files, so "postfix check" does not, and Debian's chroot resync
 # only fills etc/, lib/ and usr/lib/sasl2. Without it rsyslogd reports it
 # cannot create the socket and everything that connects to syslog after
-# chrooting is logged nowhere (issue #180).
+# chrooting is logged nowhere (issue wader/postfix-relay#180).
 mkdir -p /var/spool/postfix/dev
 
 secretsFromFiles
@@ -518,9 +518,9 @@ EOF
   # Set here rather than through dpkg-statoverride, which only records what a
   # future dpkg unpack should apply -- nothing a container ever runs -- so the
   # mode never reached the directory at all and re-adding the override was an
-  # error on every restart (issue #179). This has to stay below the
-  # "chown -R postfix:postfix /var/spool/postfix" above, which would take the
-  # directory back.
+  # error on every restart (issue wader/postfix-relay#179). This has to stay
+  # below the "chown -R postfix:postfix /var/spool/postfix" above, which would
+  # take the directory back.
   install -d -o root -g sasl -m 710 /var/spool/postfix/var/run/saslauthd
 
   saslauthd -c -r -a pam -m /var/spool/postfix/var/run/saslauthd &
@@ -578,7 +578,7 @@ supervised="$supervised rsyslogd"
 # session. Nothing else notices: "postconf -e" takes the value without a word,
 # "postfix check" passes, the socket is in /proc and master is running, so the
 # health check reports the container healthy while it relays nothing at all
-# (issue #206).
+# (issue wader/postfix-relay#206).
 #
 # One greeting is what separates the two. It is done here rather than in the
 # health check because it costs a connect in the log: once per container here,
@@ -598,10 +598,10 @@ fi
 # four daemonise, so their starter exits and they reparent to pid 1, which is
 # this script, and bash has no job to wait on. The bare "wait" this replaces
 # was therefore watching one daemon out of five and the container went on
-# relaying when any of the other four died (issue #176). Polling
-# "pgrep -x", the way the health check does, watches all of them and needs
-# nothing beyond reading /proc -- signalling a daemon that dropped to its own
-# user would need a capability the README asks deployments to drop.
+# relaying when any of the other four died (issue wader/postfix-relay#176).
+# Polling "pgrep -x", the way the health check does, watches all of them and
+# needs nothing beyond reading /proc -- signalling a daemon that dropped to its
+# own user would need a capability the README asks deployments to drop.
 while [ -z "$stopping" ] ; do
   # The sleep runs in the background and is waited for: "wait" is interrupted
   # by a trapped signal, while a foreground "sleep" would postpone the stop by

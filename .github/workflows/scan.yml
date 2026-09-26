@@ -318,15 +318,16 @@ jobs:
 
           # The marker is the only state this job has, and it lives in a field
           # other things write to. Nothing has been seen to strip it, but this
-          # body is not this job's alone: #381 was edited 87 seconds after this
-          # step created it, acquiring an assignee nothing here sets. And the
-          # way it fails is silent by construction -- a marker that is gone
-          # reads back as attempt 0, the budget restarts, and the cap never
-          # engages, which is the same shape as the sed no-op #379 fixed and
-          # cost a whole day of retries before anyone noticed. So the write is
-          # read back. Refusing to go on is the fail-closed answer: a run that
-          # cannot record an attempt must not spend one, because nothing would
-          # ever stop it spending the next.
+          # body is not this job's alone: wader/postfix-relay#381 was edited 87
+          # seconds after this step created it, acquiring an assignee nothing
+          # here sets. And the way it fails is silent by construction -- a
+          # marker that is gone reads back as attempt 0, the budget restarts,
+          # and the cap never engages, which is the same shape as the sed no-op
+          # wader/postfix-relay#379 fixed and cost a whole day of retries
+          # before anyone noticed. So the write is read back. Refusing to go on
+          # is the fail-closed answer: a run that cannot record an attempt must
+          # not spend one, because nothing would ever stop it spending the
+          # next.
           confirmStamp()
           {
             written=$(gh issue view "$existing" --json body --jq .body \
@@ -392,11 +393,11 @@ jobs:
         # nowhere, and the close step below reads the count from the scan this
         # run already did -- so the issue a finding opens can only be closed by
         # a *later* run of this workflow, and the only thing that starts one is
-        # tomorrow's cron. Measured on issue #381: the rebuild this step
-        # dispatched at 11:26 published a fixed image at 11:33, and the issue
-        # and the red run stayed as they were for the rest of the day.
-        # Waiting here is what lets the step below ask whether the remedy
-        # worked, on the run that applied it.
+        # tomorrow's cron. Measured on issue wader/postfix-relay#381: the
+        # rebuild this step dispatched at 11:26 published a fixed image at
+        # 11:33, and the issue and the red run stayed as they were for the rest
+        # of the day. Waiting here is what lets the step below ask whether the
+        # remedy worked, on the run that applied it.
         #
         # A step, deliberately, and not a second trigger on this workflow.
         # The daily pacing the attempt counter rests on lives in the trigger

@@ -7,8 +7,8 @@ repository, then **Report a vulnerability**. That opens a report only the
 maintainers can read, and a private fork to fix it in.
 
 Please do not open a public issue for something that is not already public.
-If the button is not there, say in [#115](../../issues/115) that you have a
-report and need somewhere to send it — without the details.
+If the button is not there, open an issue saying you have a report and need
+somewhere to send it — without the details.
 
 There is no bounty, and no committed response time: this is a small project
 run in spare time.

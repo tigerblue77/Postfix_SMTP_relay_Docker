@@ -84,7 +84,7 @@ def test_postfixmaster_variables_leave_nothing_in_main_cf(postfix_factory):
     What makes it worth an assertion rather than a comment is where the value
     lands: a POSTFIXMASTER_<name>_FILE secret is resolved before these loops
     (invariant 17), so the same edit would write a resolved credential into
-    main.cf. (issue #314)
+    main.cf. (issue wader/postfix-relay#314)
     """
     relay = postfix_factory(
         env={'POSTFIXMASTER_submission__inet': 'submission inet n - y - - smtpd'},
@@ -123,8 +123,9 @@ def test_postmap_variables_create_indexed_tables(postfix_factory, mailpit):
 def test_mynetworks_restricts_who_may_relay(postfix_factory, mailpit):
     """The default open relay can be closed down with POSTFIX_mynetworks.
 
-    The image is an open relay by default and only docker networking keeps
-    it safe, which is what issues #16, #20 and #107 are all about.
+    The image is an open relay by default and only docker networking keeps it
+    safe, which is what issues wader/postfix-relay#16, wader/postfix-relay#20
+    and wader/postfix-relay#107 are all about.
     """
     relay = postfix_factory(env={'POSTFIX_mynetworks': '127.0.0.0/8'})
 
