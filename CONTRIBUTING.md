@@ -29,6 +29,52 @@ If you are not comfortable with point 2, say so in your pull request rather than
 
 Everything that was in this repository before the relicensing recorded in [`NOTICE`](./NOTICE) arrived under the MIT licence, which already grants the right to sublicense. That is what lets both arms cover the whole tree, including the years before this page existed.
 
+## Sign your work — Developer Certificate of Origin
+
+Every commit must carry a `Signed-off-by` line. Adding one is your statement of the [Developer Certificate of Origin 1.1](https://developercertificate.org/):
+
+> By making a contribution to this project, I certify that:
+>
+> &nbsp;&nbsp;&nbsp;&nbsp;(a) The contribution was created in whole or in part by me and I have the right to submit it under the open source license indicated in the file; or
+>
+> &nbsp;&nbsp;&nbsp;&nbsp;(b) The contribution is based upon previous work that, to the best of my knowledge, is covered under an appropriate open source license and I have the right under that license to submit that work with modifications, whether created in whole or in part by me, under the same open source license (unless I am permitted to submit under a different license), as indicated in the file; or
+>
+> &nbsp;&nbsp;&nbsp;&nbsp;(c) The contribution was provided directly to me by some other person who certified (a), (b) or (c) and I have not modified it.
+>
+> &nbsp;&nbsp;&nbsp;&nbsp;(d) I understand and agree that this project and the contribution are public and that a record of the contribution (including all personal information I submit with it, including my sign-off) is maintained indefinitely and may be redistributed consistent with this project or the open source license(s) involved.
+
+In a dual-licensed project that statement carries weight: it is the record that your contribution could be offered under both of the licences above.
+
+Sign off with the `-s` flag, using a real name and a reachable address:
+
+```bash
+git commit -s -m "Your commit message"
+```
+
+which appends:
+
+```
+Signed-off-by: Random J Developer <random@developer.example.org>
+```
+
+Forgot it on the last commit? `git commit --amend -s`. On several? `git rebase --signoff <base>`, then `git push --force-with-lease`.
+
+The **Sign-off** check reads the commits of every pull request and refuses one that lacks it — on the pull request, because pull requests here are squash-merged and the squash composes `master`'s commit from the pull request, so the branch is the last place the trailer can be read. A commit made in GitHub's web editor carries one only if the repository asks for it, which is a setting rather than a file.
+
+### Contributions written by an agent
+
+Some of the code here is written by a coding agent working on the maintainer's instruction. The DCO does not bend for that, and this project cannot afford it to: the sign-off is what records that a contribution could be offered under **both** licences, which is what keeps the commercial arm grantable.
+
+An agent is a tool. A tool cannot certify anything, and a `Signed-off-by` naming one would be a trailer that satisfies a checker while naming nobody who could make the statement above. But it is also what actually wrote the code, and a commit has room to say both. So for those commits:
+
+- **the author is the agent.** `git log`, `git blame`, `git shortlog` and GitHub's contributor graph all read that field, so it is the one place where recording who wrote the work counts. Naming the maintainer there would say they typed what a tool wrote;
+- **the `Signed-off-by` is the maintainer's**, because the certification is theirs to make. It cannot come from `git commit -s`, which derives the trailer from the author — the field that has to stay the agent's — so it is passed explicitly through the `git signoff` alias that `.claude/hooks/session-start.sh` sets at the start of every session on the maintainer's copy of the repository;
+- **the certification is the maintainer's act of reviewing and merging.** The trailer states it; the review is what makes it true. A pull request merged unread carries a sign-off that means nothing, and no workflow can tell the difference. [`.github/check_sign_off.sh`](./.github/check_sign_off.sh) reads the trailer's shape and — on a commit the agent authored — whose address is on it, so that a tool cannot end up certifying its own work. Whether the person behind that address actually reviewed anything is what it cannot see, and never will.
+
+No `Co-Authored-By` accompanies them: the author field already names the agent, and a secondary attribution repeating it would only be another place to fall out of step. Naming the agent as a co-author of a commit somebody else authored is refused outright, since it records the work in the one field nothing reads.
+
+If you are a contributor rather than the maintainer, none of this concerns you: sign your own work, with your own name. The hook knows the difference — it sets the agent identity only where `origin` is the maintainer's repository, and says so on a fork.
+
 ## Licence headers
 
 Every source file carries a two-line [SPDX](https://spdx.dev/) header: right after the shebang in a script, at the very top of a Python module, a workflow or the `Dockerfile`, and in an HTML comment at the top of a Markdown file that has one.
@@ -47,6 +93,7 @@ Do not add your own copyright line: the collective notice above already covers e
 ## Before opening a pull request
 
 - Run the test suite: `pytest`, from the repository root, with a Docker daemon running. The README's [Testing](./README.md#testing) section has the setup.
+- Sign off every commit, as [above](#sign-your-work--developer-certificate-of-origin).
 - Add a test for what you changed. Behaviour the README promises is pinned by a test here, and a behaviour with no test is one the next change is free to break.
-- Keep the two linters quiet: `shellcheck -S error run healthcheck .claude/hooks/session-start.sh` and `ruff check --no-cache --select F,B tests`. CI runs both on every pull request.
+- Keep the two linters quiet: `shellcheck -S error run healthcheck .claude/hooks/session-start.sh .github/check_sign_off.sh` and `ruff check --no-cache --select F,B tests`. CI runs both on every pull request.
 - If your change makes the README or `CLAUDE.md` wrong, the change is not finished.
