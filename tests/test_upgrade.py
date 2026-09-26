@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Starting on state an older image wrote.
 
 Pulling a newer image replaces the whole filesystem, so what an upgrade

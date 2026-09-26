@@ -968,7 +968,7 @@ releasing something no check has seen.
 | `test_qshape.py` | The queue tool the troubleshooting section has users run |
 | `test_upgrade.py` | Starting on the state the last released image wrote, which is what the "Upgrading" section promises |
 | `test_ruleset.py` | The ruleset recorded in `.github/rulesets/master.json`: its required status checks against the jobs that report them, its merge methods against the one the Dependabot auto-merge asks for, and strict mode against the workflow that keeps branches up to date |
-| `test_ci.py` | Which refs the build workflow publishes from — `master` and release tags, never a branch or a pull request — and what it runs against the image it has just published, which is not the same on a merge and on a rebuild |
+| `test_ci.py` | Which refs the build workflow publishes from — `master` and release tags, never a branch or a pull request — what it runs against the image it has just published, which is not the same on a merge and on a rebuild, and the licence that image states |
 | `test_scan.py` | What the daily image scan does with a finding: the rebuild it dispatches, the re-scan that says whether it worked, and the issue it then closes |
 
 Use the `postfix` fixture for a relay with the default configuration,
@@ -1037,7 +1037,35 @@ correct.
 
 <!-- LICENSE -->
 ## License
-postfix-relay is licensed under the MIT license. See [LICENSE](LICENSE) for the
-full license text.
+
+postfix-relay is dual-licensed.
+
+**By default it is free software under the [GNU Affero General Public
+License version 3](https://www.gnu.org/licenses/agpl-3.0) (`AGPL-3.0-only`).**
+You may use it, study it, modify it and redistribute it, at no cost and with
+no formality. The one thing asked in return is reciprocity: if you distribute
+the program, as-is or modified, as scripts, as an image or inside a product,
+the people who receive it must get the corresponding source under those same
+terms. The full text is in [LICENSE](LICENSE).
+
+Running the relay for your own mail, at home or in production at any scale,
+never requires anything from this section.
+
+**A [separate commercial licence](LICENSE-COMMERCIAL.md) is available** for
+parties who cannot meet those obligations: typically a vendor embedding the
+relay in a product whose source cannot be published, or anyone needing a
+warranty, an indemnity or a support commitment, none of which the AGPL
+provides. The choice between the two is the recipient's.
+
+Copyright and attribution notices, the licence history and the third-party
+terms that apply to the published Docker image are recorded in
+[NOTICE](NOTICE). The image carries all three files in `/root`, next to the
+two scripts. Contributing means agreeing to the terms in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+> **Running an image published before the relicensing?** Every version
+> published before it, `mwader/postfix-relay` releases included, was under the
+> MIT licence, and the copies you already hold keep those terms. The
+> relicensing withdraws nothing from anyone.
 
 <p align="right">(<a href="#top">back to top</a>)</p>

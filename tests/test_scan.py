@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """What the daily image scan does with what it finds.
 
 `.github/workflows/scan.yml` is the only thing in the tree that writes to the

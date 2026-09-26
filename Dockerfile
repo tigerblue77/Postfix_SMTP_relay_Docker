@@ -1,5 +1,25 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 FROM debian:trixie-20260824-slim
-LABEL org.opencontainers.image.authors="Mattias Wadman <mattias.wadman@gmail.com>"
+LABEL org.opencontainers.image.authors="Tigerblue77, Mattias Wadman and the postfix-relay contributors"
+LABEL org.opencontainers.image.title="Postfix SMTP relay"
+LABEL org.opencontainers.image.description="A Postfix SMTP relay for other containers to send mail through, with optional DKIM signing, SRS rewriting and SASL authentication"
+LABEL org.opencontainers.image.url="https://github.com/tigerblue77/Postfix_SMTP_relay_Docker"
+LABEL org.opencontainers.image.source="https://github.com/tigerblue77/Postfix_SMTP_relay_Docker"
+LABEL org.opencontainers.image.documentation="https://github.com/tigerblue77/Postfix_SMTP_relay_Docker#readme"
+# The image is the object form of an AGPL program, so it carries both the
+# terms it is conveyed under and a pointer to its source: this label and
+# image.source above are what a scanner reads, and the three files copied into
+# /root below are what a person reads. The identifier names the AGPL alone
+# because that is the licence the published image is conveyed under; the
+# commercial alternative is negotiated per licensee, not attached to an image.
+#
+# These labels hold for a plain "docker build", which is what the test suite
+# runs. They do not survive a publication: ci.yml hands docker/metadata-action's
+# labels to build-push-action, and those win over a LABEL instruction. So
+# ci.yml states the licence identifier itself, and the two change together.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 
 # postsrsd is optional and only installed where Debian builds it: it is missing
 # for armhf in trixie, which is the linux/arm/v7 image.
@@ -90,6 +110,10 @@ ENV \
   SASL_Passwds=""
 RUN mkdir -p /etc/opendkim/keys
 COPY run healthcheck /root/
+# The licence, the notice it and the MIT licence of the code this started from
+# require to travel with every copy, and the commercial alternative. Last, so a
+# change to them rebuilds nothing but this layer.
+COPY LICENSE NOTICE LICENSE-COMMERCIAL.md /root/
 VOLUME ["/var/spool/postfix", "/etc/opendkim/keys"]
 EXPOSE 25
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

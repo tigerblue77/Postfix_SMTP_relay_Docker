@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Configuration read from files instead of from the environment.
 
 Any POSTFIX_, POSTFIXMASTER_, POSTMAP_, OPENDKIM_ or POSTSRSD_ variable can be
