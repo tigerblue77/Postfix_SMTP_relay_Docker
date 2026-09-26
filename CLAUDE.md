@@ -406,11 +406,14 @@ Notes a contributor will hit:
   required check under the same name.
   `strict_required_status_checks_policy` is true: a branch has to contain
   `master`'s head before it merges, so each merge leaves every other open pull
-  request to be updated and re-checked. Nothing here does that updating — the
-  merge queue needs a repository owned by an organisation, auto-merge does not
-  update a branch, and Dependabot rebases its own pull requests only to
-  resolve a conflict — so a pull request left behind waits for its *Update
-  branch* button, Dependabot's included.
+  request to be updated and re-checked. Nothing in the tree does that
+  updating — the merge queue needs a repository owned by an organisation, and
+  auto-merge does not update a branch — so a pull request left behind waits
+  for its *Update branch* button. Dependabot's are the partial exception: its
+  documentation has it rebase its own pull requests on a conflict and when its
+  schedule next runs, which in `.github/dependabot.yml` is daily for the base
+  image and weekly for everything else, so a behind update can wait days
+  rather than forever.
 - **The pytest step has `timeout-minutes: 10`** inside a 20-minute job (25/45
   for the emulated one). The job timeouts are backstops: a cancelled job skips
   the upload step, so the bound expected to fire is the step's. Every wait in
