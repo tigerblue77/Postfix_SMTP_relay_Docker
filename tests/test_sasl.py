@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """SMTP authentication, on both sides of the relay.
 
 Clients authenticating to the relay (issues #69 and #79) and the relay

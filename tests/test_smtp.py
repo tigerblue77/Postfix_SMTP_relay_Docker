@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """The SMTP conversation itself, on the relay everyone gets by default.
 
 A relay is a message in and the same message out. What is checked here is

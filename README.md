@@ -1022,7 +1022,36 @@ correct.
 
 <!-- LICENSE -->
 ## License
-postfix-relay is licensed under the MIT license. See [LICENSE](LICENSE) for the
-full license text.
+
+postfix-relay is dual-licensed.
+
+**By default it is free software under the [GNU Affero General Public
+License version 3](https://www.gnu.org/licenses/agpl-3.0) (`AGPL-3.0-only`).**
+You may use it, study it, modify it and redistribute it, at no cost and with
+no formality. The one thing asked in return is reciprocity: if you distribute
+the program, as-is or modified, as scripts, as an image or inside a product,
+the people who receive it must get the corresponding source under those same
+terms. The full text is in [LICENSE](LICENSE).
+
+Running the relay for your own mail, at home or in production at any scale,
+never requires anything from this section.
+
+**A [separate commercial licence](LICENSE-COMMERCIAL.md) is available** for
+parties who cannot meet those obligations: typically a vendor embedding the
+relay in a product whose source cannot be published, or anyone needing a
+warranty, an indemnity or a support commitment, none of which the AGPL
+provides. The choice between the two is the recipient's.
+
+Copyright and attribution notices, the licence history and the third-party
+terms that apply to the published Docker image are recorded in
+[NOTICE](NOTICE). The image carries all three files in `/root`, next to the
+two scripts. Contributing means agreeing to the terms in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+> **Coming from `mwader/postfix-relay`?** This is the same project:
+> development moved here in September 2026 and the image changed namespace.
+> Versions published before that were under the MIT licence, and the copies
+> you already hold keep those terms. The relicensing withdraws nothing from
+> anyone.
 
 <p align="right">(<a href="#top">back to top</a>)</p>

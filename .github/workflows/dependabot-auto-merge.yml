@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Auto-merge Dependabot pull requests for minor and patch updates once
 # required checks pass. Major updates are left for human review.
 #

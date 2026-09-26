@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """What the image does when it is only told where to relay to.
 
 DKIM, SASL and SRS are all off unless asked for, and the README warns that the

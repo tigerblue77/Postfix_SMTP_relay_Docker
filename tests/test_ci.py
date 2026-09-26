@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """What the build workflow publishes, and what it runs against what it published.
 
 `.github/workflows/ci.yml` is what puts an image in front of users, so two
@@ -125,3 +128,23 @@ def test_a_no_cache_rebuild_is_verified_by_the_whole_suite():
             f"{job['name']} smoke-tests a no-cache rebuild, which is the one "
             f"image no run of the whole suite ever sees"
         )
+
+
+def test_the_published_image_states_its_licence():
+    """docker/metadata-action fills org.opencontainers.image.licenses from
+    GitHub's detection of the repository's licence, and its labels win over the
+    Dockerfile's LABEL lines. So the identifier a published image carries is
+    the one written here, and it has to be the one the Dockerfile writes.
+    """
+    workflow = yaml.safe_load(CI.read_text())
+    metas = [
+        step
+        for job in workflow["jobs"].values()
+        for step in job["steps"]
+        if step.get("uses", "").startswith("docker/metadata-action@")
+    ]
+    assert len(metas) == 1, f"expected one docker/metadata-action step, got {len(metas)}"
+    labels = [line.strip() for line in metas[0]["with"].get("labels", "").splitlines()]
+    assert "org.opencontainers.image.licenses=AGPL-3.0-only" in labels, labels
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text()
+    assert 'LABEL org.opencontainers.image.licenses="AGPL-3.0-only"' in dockerfile
