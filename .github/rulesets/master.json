@@ -62,6 +62,10 @@
           {
             "context": "ShellCheck",
             "integration_id": 15368
+          },
+          {
+            "context": "Sign-off",
+            "integration_id": 15368
           }
         ]
       }

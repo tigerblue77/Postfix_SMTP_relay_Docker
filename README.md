@@ -970,6 +970,7 @@ releasing something no check has seen.
 | `test_ruleset.py` | The ruleset recorded in `.github/rulesets/master.json`: its required status checks against the jobs that report them, its merge methods against the one the Dependabot auto-merge asks for, and strict mode against the workflow that keeps branches up to date |
 | `test_ci.py` | Which refs the build workflow publishes from — `master` and release tags, never a branch or a pull request — what it runs against the image it has just published, which is not the same on a merge and on a rebuild, and the licence that image states |
 | `test_scan.py` | What the daily image scan does with a finding: the rebuild it dispatches, the re-scan that says whether it worked, and the issue it then closes |
+| `test_sign_off.py` | The sign-off every commit needs: which commits the gate refuses, and that the `git signoff` alias a session is given makes one it accepts |
 
 Use the `postfix` fixture for a relay with the default configuration,
 `postfix_shared` for a configuration several tests read the same way, and
@@ -1004,12 +1005,12 @@ output.
 
 `run` and `healthcheck` are shell rather than python, so the suite does not
 read them. Continuous integration runs shellcheck over both -- and over the
-session-start hook under `.claude/`, which ships nowhere but passes the same
-threshold anyway -- and a pull request that introduces a shellcheck *error*
-in any of them is rejected:
+session-start hook under `.claude/` and the sign-off check under `.github/`,
+which ship nowhere but pass the same threshold anyway -- and a pull request
+that introduces a shellcheck *error* in any of them is rejected:
 
 ```bash
-shellcheck -S error run healthcheck .claude/hooks/session-start.sh
+shellcheck -S error run healthcheck .claude/hooks/session-start.sh .github/check_sign_off.sh
 ```
 
 That threshold is the whole gate. Warnings and notes below it are left
