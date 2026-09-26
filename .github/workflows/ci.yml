@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 name: ci
 
 on:
@@ -87,6 +90,14 @@ jobs:
             type=sha
           flavor: |
             latest=false
+          # The licence is spelled out rather than left to the action, which
+          # fills org.opencontainers.image.licenses from GitHub's licence
+          # detection for the repository. Every label it emits reaches
+          # build-push-action as a --label, which wins over the Dockerfile's
+          # LABEL lines, so this is the identifier a published image carries.
+          # It has to say what the Dockerfile says, and the two change together.
+          labels: |
+            org.opencontainers.image.licenses=AGPL-3.0-only
       -
         name: Set up QEMU
         uses: docker/setup-qemu-action@v4

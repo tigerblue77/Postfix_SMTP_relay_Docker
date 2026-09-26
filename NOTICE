@@ -1,0 +1,106 @@
+postfix-relay
+=============
+
+Copyright (C) 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay
+contributors.
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License, version 3, as
+published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero
+General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+The full licence text is in the LICENSE file next to this one.
+
+A separate commercial licence is available for parties who cannot meet
+the obligations of the AGPL. See LICENSE-COMMERCIAL.md. Which of the two
+applies is the recipient's choice: taking the program under the AGPL
+requires no permission, no registration and no notice to anyone.
+
+
+Upstream material
+-----------------
+
+This project was written by Mattias Wadman in July 2015 and maintained
+at <https://github.com/wader/postfix-relay> under the MIT licence. In
+September 2026 development continued in this repository, which started
+as a fork of that one and carries its full history. Everything written
+before the relicensing recorded below remains available under the MIT
+licence, whose notice is reproduced here in full, as that licence
+requires:
+
+    MIT License
+
+    Copyright (c) 2016 Mattias Wadman
+
+    Permission is hereby granted, free of charge, to any person obtaining
+    a copy of this software and associated documentation files (the
+    "Software"), to deal in the Software without restriction, including
+    without limitation the rights to use, copy, modify, merge, publish,
+    distribute, sublicense, and/or sell copies of the Software, and to
+    permit persons to whom the Software is furnished to do so, subject to
+    the following conditions:
+
+    The above copyright notice and this permission notice shall be
+    included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+    BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+    ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+    CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+
+Third-party material
+--------------------
+
+The Docker image this repository publishes also contains software that
+this project neither wrote nor distributes in source form here: the
+Debian base image, postfix, opendkim and opendkim-tools, postsrsd,
+rsyslog, sasl2-bin, libsasl2-modules, libpam-pwdfile, whois, procps,
+perl, openssl and ca-certificates, each under its own licence. They are
+aggregated with this program, not derived from it, and their terms are
+the ones shipped inside the image itself, under /usr/share/doc.
+
+
+Licence history
+---------------
+
+A downstream recipient needs to be able to reconstruct which terms
+applied when, so the chain is recorded here rather than only in the git
+history:
+
+  2015-07-18 up to the commit    MIT, Copyright (c) 2016 Mattias Wadman.
+  that added this file           Copies obtained under those terms keep
+                                 them for good: the MIT licence is not
+                                 revocable, and the relicensing below
+                                 withdraws it from nobody who already
+                                 holds such a copy.
+
+  From the commit that added     GNU Affero General Public License v3.0
+  this file onwards              only (AGPL-3.0-only), plus a separate
+                                 commercial licence.
+
+
+Attribution
+-----------
+
+Attribution is a licence obligation here, not a courtesy: AGPL-3.0
+sections 5(a) and 7(b) require the legal notices and the author
+attributions to be preserved in modified versions. Keeping this file, the
+LICENSE file and the SPDX headers in the source files intact is what
+satisfies them.
+
+The people who wrote this program are listed in the repository's commit
+history, which is the authoritative record:
+
+    git shortlog -sne

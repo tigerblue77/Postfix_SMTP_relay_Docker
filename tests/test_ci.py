@@ -1,4 +1,8 @@
-"""What the build workflow runs against the image it has just published.
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+"""What the build workflow runs against the image it has just published, and
+the licence that image states.
 
 `.github/workflows/ci.yml` is what puts an image in front of users, and the
 two **Verify Published Image** jobs are the last thing to look at one before
@@ -8,6 +12,11 @@ has `test.yml` running the whole suite against a build of the same tree in
 parallel, so the smoke tests are all that is left to learn, while a no-cache
 rebuild is a `workflow_dispatch` of `ci.yml` alone and `test.yml` never sees
 it at all.
+
+The licence is here for a reason of the same kind: `docker/metadata-action`'s
+labels win over the `Dockerfile`'s `LABEL` lines, so the identifier every
+published image carries is the one `ci.yml` writes, and it has to agree with
+the `Dockerfile`'s.
 
 Like `test_ruleset.py` these read a file and start nothing, so they are part of
 the small half of the suite that needs no docker daemon.
@@ -50,3 +59,23 @@ def test_a_no_cache_rebuild_is_verified_by_the_whole_suite():
             f"{job['name']} smoke-tests a no-cache rebuild, which is the one "
             f"image no run of the whole suite ever sees"
         )
+
+
+def test_the_published_image_states_its_licence():
+    """docker/metadata-action fills org.opencontainers.image.licenses from
+    GitHub's detection of the repository's licence, and its labels win over the
+    Dockerfile's LABEL lines. So the identifier a published image carries is
+    the one written here, and it has to be the one the Dockerfile writes.
+    """
+    workflow = yaml.safe_load(CI.read_text())
+    metas = [
+        step
+        for job in workflow["jobs"].values()
+        for step in job["steps"]
+        if step.get("uses", "").startswith("docker/metadata-action@")
+    ]
+    assert len(metas) == 1, f"expected one docker/metadata-action step, got {len(metas)}"
+    labels = [line.strip() for line in metas[0]["with"].get("labels", "").splitlines()]
+    assert "org.opencontainers.image.licenses=AGPL-3.0-only" in labels, labels
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text()
+    assert 'LABEL org.opencontainers.image.licenses="AGPL-3.0-only"' in dockerfile

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """What the container has to be allowed to do.
 
 The relay starts as root because postfix refuses to run as anything else, but
