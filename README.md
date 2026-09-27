@@ -575,6 +575,39 @@ It is printed and not written back, so nothing lands in your volume that you
 did not put there. The rebuild is for RSA keys; an ed25519 key carries its
 public half differently, and the log says so rather than guessing.
 
+#### Changing the selector
+
+Editing the selector in `OPENDKIM_DOMAINS` and restarting generates the new key
+at that start and signs with it at once, before anyone can have published its
+record. A verifier that cannot find the record counts the signature as failed,
+not as missing, so while DNS catches up that mail passes DMARC only if SPF
+does. A domain signs with one selector at a time, so the old key stops being
+used at the same moment.
+
+Generate the next key ahead of time instead, while the current one goes on
+signing. For a new selector `mail2026` on `domain.tld`:
+
+1. Generate the key. Nothing uses it until `OPENDKIM_DOMAINS` names its
+   selector.
+   ```
+   docker exec <container> opendkim-genkey -D /etc/opendkim/keys/domain.tld \
+     --selector=mail2026 --domain=domain.tld --append-domain
+   ```
+2. Publish the record it wrote, which
+   `docker exec <container> cat /etc/opendkim/keys/domain.tld/mail2026.txt`
+   prints, and wait until it resolves.
+3. Set `OPENDKIM_DOMAINS=domain.tld=mail2026` and recreate the container. The
+   key is already there, so it is used as it is rather than regenerated.
+4. Keep the old record published for a few more days: mail signed with the old
+   key may still be queued, here or further along, and is verified when it is
+   delivered. Postfix retries for five days by default. Then remove the record,
+   and delete `mail.private` and `mail.txt`.
+
+Step 3 needs the key from step 1 to survive the container being recreated, so
+mount `/etc/opendkim/keys` as [Volumes](#volumes) describes. Without that, a
+`docker rm` and `docker run` loses it and generates yet another key, whose
+record nobody has published.
+
 Other OpenDKIM options are set with the `OPENDKIM_<name>` variables described in
 [OpenDKIM variables](#opendkim-variables).
 
