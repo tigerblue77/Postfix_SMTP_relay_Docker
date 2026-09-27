@@ -38,7 +38,9 @@ protection. So be careful to not expose it publicly, see
     <a href="#spf-and-dkim">SPF and DKIM</a>
     <ul>
       <li><a href="#spf">SPF</a></li>
+      <li><a href="#reverse-dns">Reverse DNS</a></li>
       <li><a href="#dkim">DKIM</a></li>
+      <li><a href="#dmarc">DMARC</a></li>
     </ul>
   </li>
   <li><a href="#volumes">Volumes</a></li>
@@ -260,6 +262,8 @@ and points postfix at it:
 environment:
   - POSTSRSD_SRS_DOMAIN=smtp.domain.tld
 ```
+
+The SRS domain needs an SPF record of its own, see [SPF](#spf).
 
 Any other setting from `/etc/default/postsrsd` can be set the same way, using
 `POSTSRSD_<name>` environment variables, for example
@@ -530,10 +534,35 @@ Under `docker stack deploy` the `security_opt` line is dropped — swarm prints
 <!-- SPF AND DKIM -->
 ## SPF and DKIM
 
+The records below live in DNS and in your provider's settings, outside the
+container, and a relay whose own configuration is correct still has its mail
+refused without them. This covers what is particular to this image, and links
+out for the rest.
+
 ### SPF
-When sending email using your own SMTP server it is probably a good idea
-to setup [SPF](https://en.wikipedia.org/wiki/Sender_Policy_Framework) for the
-domain you're sending from.
+[SPF](https://en.wikipedia.org/wiki/Sender_Policy_Framework) lists, for the
+domain you send from, the addresses allowed to send its mail, and which ones
+those are depends on how mail leaves:
+
+- Delivered directly, with no `POSTFIX_relayhost`, mail leaves from the host's
+  public address, so the record lists it:
+  `domain.tld. IN TXT "v=spf1 ip4:203.0.113.25 -all"`.
+- Through `POSTFIX_relayhost`, it leaves from the provider's servers, so the
+  record lists those instead, with the `include:` the provider documents.
+
+With [SRS](#postsrsd-variables) on, receivers check SPF against the SRS domain
+rather than the original sender's, so `POSTSRSD_SRS_DOMAIN` needs an SPF record
+of its own listing the same addresses. Without one, rewriting meant to keep
+forwarded mail passing SPF makes it fail instead.
+
+### Reverse DNS
+Delivering directly, the public address mail leaves from wants a PTR record
+resolving to the name in `POSTFIX_myhostname`, the one the relay greets
+receivers with. The PTR is set by whoever owns the address, your hosting
+provider or ISP, never in the container, and large receivers refuse mail from
+an address with none, or with a generic one, before they accept the message.
+Through `POSTFIX_relayhost` it is the provider's addresses that count, and
+their records are the provider's.
 
 ### DKIM
 To enable [DKIM](https://en.wikipedia.org/wiki/DomainKeys_Identified_Mail),
@@ -577,6 +606,16 @@ public half differently, and the log says so rather than guessing.
 
 Other OpenDKIM options are set with the `OPENDKIM_<name>` variables described in
 [OpenDKIM variables](#opendkim-variables).
+
+### DMARC
+A [DMARC](https://dmarc.org/overview/) policy on the domain in `From:` passes
+when SPF or DKIM passes *for that domain*. DKIM is the half this relay decides:
+opendkim picks the key by the `From:` address, so a message whose `From:` is at
+a domain in `OPENDKIM_DOMAINS` is signed with `d=` that domain, whatever its
+envelope sender. [SRS](#postsrsd-variables) rewrites only the envelope sender,
+so that alignment survives it. The mistake that breaks it is listing the
+relay's own hostname rather than the domains mail is sent from; see
+[DKIM](#dkim).
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
