@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: sign-off
+
+# CONTRIBUTING.md requires a Signed-off-by on every commit, and CLAUDE.md
+# repeats it to every session that opens here; this is the job that looks for
+# one (issue #34). .github/check_sign_off.sh holds the decision and says why it
+# is shaped the way it is.
+#
+# On pull requests only, and that is not a gap. Pull requests are
+# squash-merged, and a squash composes its message from the pull request
+# rather than from the branch, so the branch's own commits are the last place
+# the trailer can be read. Running on a push to master would also mean a
+# permanently red default branch, since the unsigned history already there
+# cannot be signed without rewriting it. No workflow_dispatch either: a run
+# started by hand has no pull request, so no range, and could only ever fail.
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sign-off:
+    name: "Sign-off"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # fetch-depth 0 because the script reads base..head, and a shallow
+      # checkout has neither end of that range: it would fail closed on every
+      # pull request, for a reason in this file rather than in the contribution.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The two SHAs travel as environment variables rather than being expanded
+      # into the script line. They are hexadecimal and GitHub's own, so nothing
+      # here is waiting to be escaped, but a run: block that expands ${{ }}
+      # inline is the shape that goes wrong when the value stops being a SHA.
+      - name: Check the sign-offs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: .github/check_sign_off.sh "$BASE_SHA" "$HEAD_SHA"

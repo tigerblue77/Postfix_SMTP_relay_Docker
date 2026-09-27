@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Auto-merge Dependabot pull requests for minor and patch updates once
 # required checks pass. Major updates are left for human review.
 #
@@ -14,10 +17,12 @@
 # Required checks are matched by job name, not by workflow name. The names
 # that exist are "Build Image", "Pytest", "Pytest (arm64)",
 # "Pytest (arm/v7, emulated)", "Event File", "Test Results", "ShellCheck",
-# "Ruff", "Verify Published Image (amd64)" / "(arm64)", "Publish latest" and
-# "Image Scan"; "ci", "test", "lint" and "scan" are workflows and never report
-# a check of their own, and one workflow can report more than one -- "lint"
-# reports both "ShellCheck" and "Ruff".
+# "Ruff", "Sign-off", "Verify Published Image (amd64)" / "(arm64)",
+# "Publish latest" and "Image Scan"; "ci", "test", "lint", "sign-off" and
+# "scan" are workflows and never report a check of their own, and one workflow
+# can report more than one -- "lint" reports both "ShellCheck" and "Ruff".
+# Dependabot's commits carry "Signed-off-by: dependabot[bot]
+# <support@github.com>", which is what lets "Sign-off" pass on them.
 #
 # "Pytest (arm/v7, emulated)" runs on every pull request since
 # wader/postfix-relay#273, and is still not in the required list: its verdict

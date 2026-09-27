@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 name: lint
 
 on:
@@ -63,13 +66,16 @@ jobs:
         # into the image; the hook is what stands a Claude Code on the web
         # session up, so when it breaks it breaks these gates rather than the
         # image -- and it breaks them quietly, since it deliberately exits 0
-        # whatever happens and reports only on stderr. It passes at the stock
-        # threshold as well as this one, so gating it can only ever go red on
-        # a future edit to it. All three carry a #!/bin/bash shebang, which is
-        # where shellcheck reads the dialect from, so there is no -s to pass.
+        # whatever happens and reports only on stderr. check_sign_off.sh is
+        # what the Sign-off check runs, so an error in it fails every pull
+        # request for a reason no contributor caused. The last two pass at the
+        # stock threshold as well as this one, so gating them can only ever go
+        # red on a future edit to them. All four carry a #!/bin/bash shebang,
+        # which is where shellcheck reads the dialect from, so there is no -s
+        # to pass.
         run: |
           shellcheck --version
-          shellcheck -S error run healthcheck .claude/hooks/session-start.sh
+          shellcheck -S error run healthcheck .claude/hooks/session-start.sh .github/check_sign_off.sh
 
   # What the Ruff gate is, and what it deliberately is not.
   #

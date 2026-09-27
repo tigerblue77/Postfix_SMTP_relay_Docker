@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """The image as it is published, before anything is started.
 
 Everything here is read from the built image rather than from a running
@@ -139,6 +142,29 @@ def test_the_image_ships_the_health_check(config):
     assert healthcheck['Timeout'] == 5 * 10 ** 9
     assert healthcheck['StartPeriod'] == 15 * 10 ** 9
     assert healthcheck['Retries'] == 3
+
+
+def test_the_image_says_which_licence_it_is_under(config):
+    """A scanner reads the label, not the files. A plain build gets it from
+    the Dockerfile; a published one from ci.yml, which has to say the same.
+    """
+    assert config['Labels']['org.opencontainers.image.licenses'] == 'AGPL-3.0-only'
+
+
+def test_the_image_carries_its_licence_and_notices(image_shell):
+    """The image is the object form of an AGPL program, so it has to carry the
+    terms it is conveyed under, and NOTICE holds the MIT notice the code it
+    started from requires every copy to keep.
+    """
+    exit_code, output = image_shell(
+        "for f in LICENSE NOTICE LICENSE-COMMERCIAL.md ; do test -s /root/$f || echo missing $f ; done ; "
+        "head -1 /root/LICENSE ; "
+        "grep -q 'Permission is hereby granted, free of charge' /root/NOTICE && echo mit-notice-kept")
+
+    assert exit_code == 0, output
+    assert 'missing' not in output, output
+    assert 'GNU AFFERO GENERAL PUBLIC LICENSE' in output, output
+    assert 'mit-notice-kept' in output, output
 
 
 def test_the_two_shipped_scripts_are_executable(image_shell):
