@@ -10,9 +10,7 @@
 # project -- AGPL-3.0-only in LICENSE, plus LICENSE-COMMERCIAL.md -- it is the
 # record that a contribution could be offered under both arms. A rule stated
 # and checked nowhere is held by whoever happens to remember it, which is why
-# this exists (issue #34). Ported from Dell_iDRAC_fan_controller_Docker, where
-# the same rule, the same identities and the same gate have been in place
-# first.
+# this exists (issue #34).
 #
 # ON THE PULL REQUEST, AND ONLY THERE. Pull requests here are squash-merged, and
 # a squash composes the commit message from the pull request rather than from

@@ -68,9 +68,10 @@ name: Auto-update pull request branches
 # whether that one comes from a fork is the answer.
 #
 # A GitHub App is what this repository is meant to use, and what GitHub itself
-# points to for this case. The one Dell_iDRAC_fan_controller_Docker already runs
-# for the same job can be installed here as well: only the variable and the
-# secret below have to be added to this repository's settings. Nothing about it has to be renewed by hand, because the private
+# points to for this case. One App can be installed on several repositories, so
+# an App already set up for this job can be installed here as well: only the
+# variable and the secret below have to be added to this repository's settings.
+# Nothing about it has to be renewed by hand, because the private
 # key does not expire -- the installation token minted from it does, after an
 # hour, which is why the key rather than a token is what is stored. The key goes
 # into the PULL_REQUESTS_UPDATE_APP_PRIVATE_KEY secret and the App's client

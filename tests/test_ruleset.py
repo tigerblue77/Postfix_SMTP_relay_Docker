@@ -214,9 +214,8 @@ def test_the_branch_updater_leaves_dependabot_pull_requests_to_dependabot(tmp_pa
     """A rebase pushed by anyone but Dependabot replaces the commit Dependabot
     signed, and `dependabot/fetch-metadata` in `dependabot-auto-merge.yml`
     refuses the result, so an update whose merge was not queued yet never gets
-    queued -- which is what every Dependabot pull request of
-    WD_MyPassport_Linux_unlocker answered once that repository's copy of the
-    updater reached them (tigerblue77/Dell_iDRAC_fan_controller_Docker#514).
+    queued -- which is not a hypothesis: an updater without this filter left
+    every open Dependabot pull request it reached unmerged.
 
     The step runs here as written, over two pull requests equally far behind
     master, against a stubbed `gh` that records its calls: the one Dependabot
