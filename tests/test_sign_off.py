@@ -358,3 +358,23 @@ def test_a_fork_is_given_no_identity_and_told_to_sign_its_own_work(tmp_path, ori
     )
     assert configured.stdout == "", f"the hook configured a fork: {configured.stdout}"
     assert "sign your own work" in result.stdout
+    # Nor is the issue and pull request rule addressed to them: GitHub drops
+    # "assignees" from a caller without write access, and a contributor's
+    # draft is what the branch updater's filter is there to leave alone.
+    assert "assigned to" not in result.stdout, output(result)
+    assert "never a draft" not in result.stdout, output(result)
+
+
+@pytest.mark.parametrize("origin", [
+    "https://github.com/tigerblue77/Postfix_SMTP_relay_Docker.git",
+    "git@github.com:TigerBlue77/Postfix_SMTP_relay_Docker.git",
+])
+def test_the_maintainers_session_is_told_to_assign_and_never_to_draft(tmp_path, origin):
+    """An issue and a pull request are not settings: both fields are decided
+    on the call that creates them, a web session's harness says to open the
+    pull request as a draft, and nobody says to assign anything. So the hook
+    says both, on the maintainer's copy, before the session makes that call.
+    CLAUDE.md, "Conventions", carries why."""
+    _, result = run_hook(tmp_path, origin)
+    assert "assigned to tigerblue77" in result.stdout, output(result)
+    assert "never a draft" in result.stdout, output(result)

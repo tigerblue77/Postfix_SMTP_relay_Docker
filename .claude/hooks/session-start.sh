@@ -170,8 +170,24 @@ if [ "$maintainersCopy" == "yes" ] ; then
     warn "could not set the git identity and the signoff alias: a commit made here would be authored and signed off by whatever git defaults to"
     incomplete=yes
   fi
+
+  # The other half of what a session here has to know before it touches
+  # GitHub, and the half there is nothing to configure for: an issue and a
+  # pull request are not settings, they are created through the platform's
+  # API with whatever the caller passes, and both fields are decided at that
+  # call. A web session is told by its harness to open a pull request as a
+  # draft, and by nobody to assign anything, so both end up at a value nobody
+  # here chose -- and the session that would come back to repair them has
+  # ended by then. CLAUDE.md, "Conventions", carries the argument; this
+  # carries the reminder, because a rule that has to be recalled every time
+  # is a rule that gets forgotten. Ported from
+  # Dell_iDRAC_fan_controller_Docker: the same rule holds in every repository
+  # of this maintainer.
+  echo "session-start: an issue or pull request opened here is assigned to $maintainerLogin and is never a draft -- see CLAUDE.md, \"Conventions\""
 else
-  echo "session-start: this is not $maintainerLogin's copy of the repository, so no git identity was set: sign your own work, with your own name (CONTRIBUTING.md)"
+  # Not silence, but only the sentence that is the contributor's own: their
+  # issues and drafts are theirs, and the rule above is not addressed to them.
+  echo "session-start: this is not $maintainerLogin's copy of the repository, so no git identity and no issue or pull request convention was set for it: sign your own work, with your own name (CONTRIBUTING.md)"
 fi
 
 startDocker || incomplete=yes
