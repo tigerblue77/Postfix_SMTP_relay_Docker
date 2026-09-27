@@ -74,6 +74,27 @@ def test_relaying_still_works_after_an_unclean_stop(postfix_factory, mailpit):
     assert mailpit.wait_for_message('after the kill')
 
 
+def test_the_supervision_loop_wakes_once_per_interval(postfix_factory):
+    """With saslauthd started, the loop used to poll twice per interval.
+
+    saslauthd's starter is a job of "run" that exits during start-up, and a
+    bare "wait -n" returned on it at once, leaving the loop one sleep ahead of
+    itself for good: two of its two-second sleeps in flight at a time, so
+    about ten in ten seconds instead of five. It now waits on its own sleep
+    and on rsyslogd by name (issue #15). Counted as the distinct "sleep 2"
+    processes pid 1 starts over ten seconds, sampled five times a second.
+    """
+    relay = postfix_factory(env={'SASL_Passwds': '/etc/postfix/sasl/sasl_passwds'})
+    poll_until(lambda: relay.exec(["pgrep", "-P", "1", "-fx", "sleep 2"]).exit_code == 0,
+               description='"run" to reach its supervision loop')
+
+    sleeps = container_exec(relay, [
+        "sh", "-c",
+        'for i in $(seq 1 50) ; do pgrep -P 1 -fx "sleep 2" ; sleep 0.2 ; done | sort -u'])
+
+    assert len(sleeps.split()) <= 6, sleeps.split()
+
+
 def test_the_container_stops_gracefully(postfix_factory):
     """"docker stop" must not have to fall back to killing the container.
 
