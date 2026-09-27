@@ -728,12 +728,16 @@ changing any of them.
    (wader/postfix-relay#104, commit `46ad15f`)
 
 2. **Every `postconf -e` in `dkimConfig` and `srsConfig` is wrapped in an
-   `if [ -z "$POSTFIX_..." ]`** — two in `dkimConfig`, four in `srsConfig`, six
-   of six. These guards are the only reason a user can override
-   `milter_default_action`, `smtpd_milters` and the four canonical-map settings
-   through the documented `POSTFIX_*` variables. Removing one silently
-   overwrites the user's value. (wader/postfix-relay#134, commit `1748a61`;
-   `tests/test_dkim.py` pins the milter half.)
+   `if [ -z "${POSTFIX_...+set}" ]`** — two in `dkimConfig`, four in
+   `srsConfig`, six of six. These guards are the only reason a user can
+   override `milter_default_action`, `smtpd_milters` and the four canonical-map
+   settings through the documented `POSTFIX_*` variables. Removing one silently
+   overwrites the user's value. The `+set` is part of it: an empty `POSTFIX_`
+   value is how the README clears a parameter, the generic loop has already
+   written it, and a plain `-z` wrote the default back over it (#8).
+   (wader/postfix-relay#134, commit `1748a61`; `tests/test_dkim.py` pins the
+   milter half, `tests/test_srs.py` the canonical half, both with an empty
+   value too.)
 
 3. **`postsrsd` is installed conditionally** — `if apt-cache show postsrsd`.
    Debian trixie does not build it for armhf, so an unconditional install fails
