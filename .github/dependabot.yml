@@ -35,6 +35,23 @@ updates:
   # '/^trixie-.*-slim/' filter in the old bump comment did. A suite change
   # (trixie -> forky) is a deliberate edit, as it was with bump.
   #
+  # And it has a deadline nothing here announces. Debian's security team
+  # supports trixie (released 2025-08-09) until 2028-08-09, and Debian LTS
+  # takes it from there to 2030-06-30 -- the dates as
+  # https://wiki.debian.org/LTS gave them on 2026-09-27; check
+  # https://www.debian.org/releases/ and that page again rather than trusting
+  # these. When support ends, no new trixie-<date>-slim tag is published and
+  # these daily pull requests simply stop, which looks exactly like having
+  # nothing to update. So the suite bump is due before that date, not after
+  # the pull requests go quiet.
+  #
+  # The last suite bump waited over two years for want of a way to test it
+  # (wader/postfix-relay#86). That no longer holds: the whole suite runs on
+  # amd64 and arm64 on every pull request, and the Debian release is pinned in
+  # one assertion,
+  # tests/test_image.py::test_the_image_is_a_single_debian_release, which
+  # fails until it is moved in the same edit as the FROM line.
+  #
   # A date is not a semver minor or patch, so these never match the
   # auto-merge rule below and always wait for review, like bump's PRs did.
   - package-ecosystem: docker
