@@ -533,6 +533,19 @@ EOF
   }
 fi
 
+# postconf -e writes whatever name it is given, and only postconf's display
+# mode says when postfix uses none of them. Asked once, now that the whole
+# configuration is written, so that a misspelt variable -- POSTFIX_mynetwork
+# for mynetworks, which leaves the shipped 0.0.0.0/0 in place -- is named in
+# the log rather than quietly doing nothing. It stays a warning: a typo must
+# not cost the mail, and a clean configuration prints nothing here.
+unused=$(postconf 2>&1 > /dev/null)
+if [ -n "$unused" ] ; then
+  echo "$unused" >&2
+  echo "A POSTFIX_ or POSTFIXMASTER_ variable names a parameter postfix does not use," \
+       "so it has no effect: check its spelling against the warning above." >&2
+fi
+
 startService postfix master
 
 # Don't fiddle with existing config file (e.g. mounted from filesystem)
