@@ -724,9 +724,17 @@ volumes:
   - /your_local_path:/var/log/
 ```
 
-The container never rotates or caps that file: it has no logrotate and nothing
-to run one, so the file grows with the traffic until the host's disk is full.
-Rotate it from the host, with `copytruncate`:
+The file is capped by `RSYSLOG_LOG_FILE_MAX_SIZE`, `100m` by default: when it
+reaches that size it becomes `mail.log.1`, replacing the one before, and a new
+`mail.log` is started, so the file log never takes more than twice the limit.
+Sizes are written the way rsyslog reads them, a number with `k`, `m` or `g`, and
+a value it could not read stops the container rather than leave the file
+unbounded.
+
+Set `RSYSLOG_LOG_FILE_MAX_SIZE` empty to turn the cap off, when you would rather
+keep a longer history and rotate the file from the host. The container has no
+logrotate of its own, so without either the file grows with the traffic until
+the host's disk is full. Rotate it with `copytruncate`:
 
 ```
 /your_local_path/mail.log {

@@ -749,8 +749,8 @@ changing any of them.
    only generates that file when it does not already exist — the "don't fiddle
    with a mounted config" branch. Shipping the packaged one would permanently
    take the generation path out of service and silently ignore
-   `RSYSLOG_TIMESTAMP`, `RSYSLOG_LOG_TO_FILE` and the remote-forwarding
-   variables.
+   `RSYSLOG_TIMESTAMP`, `RSYSLOG_LOG_TO_FILE`, `RSYSLOG_LOG_FILE_MAX_SIZE` and
+   the remote-forwarding variables.
 
 6. **`HEALTHCHECK` is `/root/healthcheck`, a script, not `pgrep -x master`.**
    The README explains *why* the check covers every daemon; three details
