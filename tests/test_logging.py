@@ -10,7 +10,8 @@ unless they ask for more (issue wader/postfix-relay#58).
 
 import re
 
-from tests.helpers import (container_exec, container_log, file_missing, process_running,
+from tests.helpers import (container_exec, container_log, container_stderr,
+                           exit_code_within, file_missing, process_running,
                            restart, send, wait_for_file, wait_for_log)
 
 MAIL_LOG_LINE = re.compile(r'^postfix/\w+\[\d+\]: ')
@@ -244,6 +245,66 @@ def test_a_file_log_truncated_in_place_is_written_again_from_its_start(
 
     assert '\0' not in logged
     assert logged.count('status=sent') == 1
+
+
+FILLER = ('for i in $(seq 1 300) ; do '
+          'logger -p mail.info "filler line $i, to take the file log past its limit" ; done')
+
+
+def test_the_file_log_is_capped_and_keeps_the_file_before(postfix_factory):
+    """Nothing else in the container rotates the file, so it is bounded by
+    RSYSLOG_LOG_FILE_MAX_SIZE: at the limit it becomes mail.log.1, replacing
+    the one before, and a new mail.log is started (issue #30). A small limit
+    here, so a few hundred lines go past it several times over.
+    """
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes',
+                                 'RSYSLOG_LOG_FILE_MAX_SIZE': '4k'})
+
+    container_exec(relay, ["sh", "-c", FILLER])
+    wait_for_file(relay, '/var/log/mail.log', 'filler line 300')
+
+    sizes = container_exec(relay, ["stat", "-c", "%n %s",
+                                   "/var/log/mail.log", "/var/log/mail.log.1"])
+    # rsyslogd rotates after the write that crosses the limit, so a file can
+    # be over it by one line, and never by more.
+    for line in sizes.splitlines():
+        name, size = line.split()
+        assert int(size) <= 4096 + 100, sizes
+    assert 'filler line' in container_exec(relay, ["cat", "/var/log/mail.log.1"])
+
+
+def test_the_file_log_is_capped_at_100m_unless_told_otherwise(postfix_factory):
+    """The limit is on by default, so that the file log the README shows how
+    to mount cannot fill the host's disk unattended (issue #30)."""
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes'})
+
+    config = container_exec(relay, ["cat", "/etc/rsyslog.conf"])
+
+    assert 'rotation.sizeLimit="100m"' in config
+
+
+def test_an_empty_limit_leaves_the_file_log_unbounded(postfix_factory):
+    """For whoever already rotates the file from the host and wants nothing
+    to move it under them."""
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes',
+                                 'RSYSLOG_LOG_FILE_MAX_SIZE': ''})
+
+    config = container_exec(relay, ["cat", "/etc/rsyslog.conf"])
+
+    assert 'mail.* -/var/log/mail.log' in config
+    assert 'sizeLimit' not in config
+
+
+def test_a_limit_rsyslogd_cannot_read_stops_the_container(postfix_factory):
+    """rsyslogd reads a size it does not understand as no limit at all, which
+    is the one thing the setting is there to prevent, so it is refused before
+    anything starts."""
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes',
+                                 'RSYSLOG_LOG_FILE_MAX_SIZE': '100 MB'},
+                            wait_ready=False)
+
+    assert exit_code_within(relay, seconds=20) == 1
+    assert "RSYSLOG_LOG_FILE_MAX_SIZE is '100 MB'" in container_stderr(relay)
 
 
 def test_a_renamed_file_log_is_reopened_when_rsyslogd_is_sent_hup(postfix_factory, mailpit):

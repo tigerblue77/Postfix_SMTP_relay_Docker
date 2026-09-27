@@ -356,6 +356,19 @@ srsConfig()
     fi
 }
 
+# RSYSLOG_LOG_FILE_MAX_SIZE goes to rsyslogd as it is, and rsyslogd takes a
+# value it cannot read as no limit at all, which is the one outcome the setting
+# exists to prevent. Checked here, before anything is started or written: the
+# generated /etc/rsyslog.conf is kept across restarts, so a refusal half-way
+# through writing it would leave a broken one in place for good.
+if [ "${RSYSLOG_LOG_TO_FILE}" == 'yes' ] && [ -n "${RSYSLOG_LOG_FILE_MAX_SIZE}" ] \
+   && [[ ! "${RSYSLOG_LOG_FILE_MAX_SIZE}" =~ ^[0-9]+[kKmMgG]?$ ]] ; then
+  echo "RSYSLOG_LOG_FILE_MAX_SIZE is '${RSYSLOG_LOG_FILE_MAX_SIZE}', which is not" \
+       "a size such as 100m. Refusing to start with a file log nothing bounds;" \
+       "set it empty to leave the file unbounded on purpose." >&2
+  exit 1
+fi
+
 # Unclean container stop might leave pid files around and rsyslogd seems
 # sometimes falsely think it's already running if some other process
 # happens to have its old pid when starting.
@@ -556,7 +569,23 @@ EOF
 
   echo '*.*;auth,authpriv.none /dev/stdout' >> /etc/rsyslog.conf
 
-  if [ "${RSYSLOG_LOG_TO_FILE}" == 'yes' ] ; then
+  # Bounded unless asked otherwise: nothing else in the container rotates the
+  # file, and on the host directory the README suggests mounting it grows
+  # until that disk is full (issue #30). At the limit rsyslogd runs the script
+  # below, which keeps the one file before this one, and then starts a new
+  # file, so the log takes at most twice the limit. The script is written
+  # rather than inlined: rsyslogd runs a size limit command without a shell,
+  # and stops writing the file if the command leaves it too big.
+  if [ "${RSYSLOG_LOG_TO_FILE}" == 'yes' ] && [ -n "${RSYSLOG_LOG_FILE_MAX_SIZE}" ] ; then
+    printf '%s\n' '#!/bin/sh' \
+      '# Run by rsyslogd when the file log reaches RSYSLOG_LOG_FILE_MAX_SIZE.' \
+      'mv -f /var/log/mail.log /var/log/mail.log.1' > /usr/local/sbin/rotate-file-log
+    chmod 755 /usr/local/sbin/rotate-file-log
+    echo "mail.* action(type=\"omfile\" file=\"/var/log/mail.log\"" \
+         "rotation.sizeLimit=\"${RSYSLOG_LOG_FILE_MAX_SIZE}\"" \
+         "rotation.sizeLimitCommand=\"/usr/local/sbin/rotate-file-log\")" \
+         >> /etc/rsyslog.conf
+  elif [ "${RSYSLOG_LOG_TO_FILE}" == 'yes' ] ; then
     echo 'mail.* -/var/log/mail.log' >> /etc/rsyslog.conf
   fi
 
