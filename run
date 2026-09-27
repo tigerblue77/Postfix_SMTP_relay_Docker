@@ -170,10 +170,15 @@ secretsFromFiles()
 # DKIM config
 dkimConfig()
 {
-    if [ -z "$POSTFIX_milter_default_action" ] ; then
+    # A default is filled in only for a setting the user left out. "+set"
+    # rather than a plain -z, because an empty POSTFIX_ value is the README's
+    # way to clear a parameter, and the loop further up has already written
+    # it: testing for emptiness wrote the default back over it. srsConfig
+    # below does the same for its four.
+    if [ -z "${POSTFIX_milter_default_action+set}" ] ; then
       postconf -e milter_default_action=accept
     fi
-    if [ -z "$POSTFIX_smtpd_milters" ] ; then
+    if [ -z "${POSTFIX_smtpd_milters+set}" ] ; then
       postconf -e smtpd_milters=inet:localhost:12301
     fi
 
@@ -342,16 +347,16 @@ srsConfig()
     # its envelope is decoded -- which is the half that makes a bounce
     # deliverable, so the behaviour is right either way. Anything that is not
     # an SRS address postsrsd returns unchanged, and it is left as it was.
-    if [ -z "$POSTFIX_sender_canonical_maps" ] ; then
+    if [ -z "${POSTFIX_sender_canonical_maps+set}" ] ; then
       postconf -e "sender_canonical_maps=tcp:127.0.0.1:${POSTSRSD_SRS_FORWARD_PORT:-10001}"
     fi
-    if [ -z "$POSTFIX_sender_canonical_classes" ] ; then
+    if [ -z "${POSTFIX_sender_canonical_classes+set}" ] ; then
       postconf -e sender_canonical_classes=envelope_sender
     fi
-    if [ -z "$POSTFIX_recipient_canonical_maps" ] ; then
+    if [ -z "${POSTFIX_recipient_canonical_maps+set}" ] ; then
       postconf -e "recipient_canonical_maps=tcp:127.0.0.1:${POSTSRSD_SRS_REVERSE_PORT:-10002}"
     fi
-    if [ -z "$POSTFIX_recipient_canonical_classes" ] ; then
+    if [ -z "${POSTFIX_recipient_canonical_classes+set}" ] ; then
       postconf -e recipient_canonical_classes=envelope_recipient,header_recipient
     fi
 }
