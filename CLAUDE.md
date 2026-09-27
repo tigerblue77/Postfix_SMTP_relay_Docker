@@ -866,7 +866,11 @@ changing any of them.
    not postponed by a whole interval and rsyslogd's death is noticed at once.
    By name, because saslauthd's starter is a job as well, one that exits
    during start-up: a bare `wait -n` returned on it straight away and left the
-   loop polling twice per interval for good (issue #15). `stopDaemons` is guarded by `$stopped`,
+   loop polling twice per interval for good (issue #15). A daemon missing
+   from one reading is read again a second later before the relay is
+   stopped, and when the second reading finds it, `run` says so on stderr and
+   carries on: that line is what lets `tests/test_lifecycle.py` hold the
+   second reading in place (issue #23). `stopDaemons` is guarded by `$stopped`,
    runs on both ways out, and stops rsyslogd last and waits for it so the
    others' parting words still reach the container log; a daemon that dies on
    its own exits 1 so an `on-failure` restart policy has something to act on.
