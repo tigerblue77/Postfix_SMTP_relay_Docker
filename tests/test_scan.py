@@ -289,3 +289,23 @@ def test_every_workflow_states_what_its_token_may_do():
 
     assert workflows
     assert not silent, f"workflows leaving their token to the repository default: {silent}"
+
+
+def test_every_action_from_outside_github_is_pinned_to_a_commit():
+    """A tag is whatever its publisher last pointed it at, so an action named
+    by one runs code nobody here has read, in the jobs that hold the registry
+    credentials or write to the repository. Every action from outside GitHub's
+    own `actions/` organisation is named by a full commit instead, with its
+    version in a comment beside it for Dependabot to bump (issue #18).
+    """
+    unpinned = []
+    for path in sorted(SCAN.parent.glob("*.yml")):
+        for job in yaml.safe_load(path.read_text())["jobs"].values():
+            for step in job.get("steps", []):
+                uses = step.get("uses", "")
+                if not uses or uses.startswith(("actions/", "./")):
+                    continue
+                if not re.fullmatch(r"[0-9a-f]{40}", uses.partition("@")[2]):
+                    unpinned.append(f"{path.name}: {uses}")
+
+    assert not unpinned, f"third-party actions named by a tag, not a commit: {unpinned}"
