@@ -271,6 +271,28 @@ so the visible `From:` header is left alone. If you set any of
 `POSTFIX_recipient_canonical_maps` or `POSTFIX_recipient_canonical_classes`
 yourself, your value is used instead.
 
+A rewritten sender is an address at the SRS domain, so a server that cannot
+deliver the message sends its bounce there rather than to the original sender.
+The bounce reaches the original sender only by coming back to this relay, which
+decodes the address and passes it on. That needs three things:
+
+- the SRS domain resolves to this relay, through its MX record or, when it has
+  none, its A record;
+- this relay's port 25 is reachable from the servers that send the bounces;
+- this relay accepts the bounce. One closed down either way
+  [Securing the relay](#securing-the-relay) shows does not: the bounce comes
+  from a server outside `mynetworks` that does not authenticate, and is refused
+  (`454 Relay access denied`, or `554 Access denied` with
+  `permit_sasl_authenticated,reject`). The original sender is then never told
+  that their message did not arrive.
+
+So a relay that uses SRS and is closed down has to accept mail for the SRS
+domain from anyone. The postfix documentation of
+[relay_domains](https://www.postfix.org/postconf.5.html#relay_domains) and
+[smtpd_recipient_restrictions](https://www.postfix.org/postconf.5.html#smtpd_recipient_restrictions)
+is where to start; whatever you choose, it is set with `POSTFIX_` variables like
+anything else.
+
 Rewritten addresses are signed with a secret in `/etc/postsrsd.secret`. The image
 ships without one, and a random secret is generated on first start, so no two
 deployments share a key. Return addresses stay valid for 21 days, so mount the
@@ -365,6 +387,10 @@ everyone else:
 environment:
   - POSTFIX_smtpd_relay_restrictions=permit_sasl_authenticated,reject
 ```
+
+Either way, a relay that also rewrites senders with
+[SRS](#postsrsd-variables) then refuses the bounces for that mail; the SRS
+section says what that costs and what it takes to accept them.
 
 Clients that authenticate should also be able to do it over an encrypted
 connection, otherwise the password crosses the network in the clear. Mount a
