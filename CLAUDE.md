@@ -463,6 +463,11 @@ Notes a contributor will hit:
   a job that does not, which is
   not a style rule: a job without it runs to github's default of six hours,
   and the three that had none included **Build Image**, a required check.
+  Every workflow likewise states its token's `permissions:` at the top, as
+  little as it needs, and `tests/test_scan.py` fails on one that does not:
+  left out, the token gets the repository's default, which no diff shows. A
+  job widens it only for itself, the way the two in `ci.yml` that push the
+  GHCR mirror add `packages: write`. (issue #18)
 - **One action is pinned to a commit**, `EnricoMi/publish-unit-test-result-action`
   in `test-results.yml`; everything else is on a major tag, and Dependabot's
   weekly `github-actions` ecosystem bumps them. Do not "normalise" that

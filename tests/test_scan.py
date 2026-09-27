@@ -272,3 +272,20 @@ def test_the_documented_marker_is_the_one_the_workflow_writes():
     assert not stale, (
         f"CLAUDE.md spells the marker without the ids the workflow puts in it: {stale}"
     )
+
+
+def test_every_workflow_states_what_its_token_may_do():
+    """Without a top-level `permissions:`, a workflow's token gets whatever
+    the repository's default is, which no diff shows and anyone with admin
+    rights can change. `ci.yml` runs with the registry credentials in its
+    environment, and until issue #18 it and two other workflows stated nothing.
+    A job may widen what the workflow grants, as the two in `ci.yml` that push
+    the GHCR mirror do; the workflow still has to say what everything else
+    gets.
+    """
+    workflows = sorted((SCAN.parent).glob("*.yml"))
+    silent = [path.name for path in workflows
+              if "permissions" not in yaml.safe_load(path.read_text())]
+
+    assert workflows
+    assert not silent, f"workflows leaving their token to the repository default: {silent}"
