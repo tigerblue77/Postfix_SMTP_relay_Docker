@@ -288,6 +288,26 @@ def test_a_setting_that_needs_a_space_can_be_passed_through(postfix_factory):
     assert process_running(relay, 'postsrsd')
 
 
+def test_a_setting_holding_an_apostrophe_is_read_back_unchanged(postfix_factory):
+    """The other half of the quoting the test above is about.
+
+    Each value is written single-quoted, so an apostrophe inside it has to be
+    closed, escaped and reopened. Unescaped, sourcing the file fails on an
+    unterminated quote, and the init script, under "set -e", takes postsrsd
+    down with it. No other POSTSRSD_ value in the suite holds an apostrophe,
+    so the replacement that does this could be deleted with every test still
+    green (issue #23).
+    """
+    relay = postfix_factory(env={'POSTSRSD_SRS_DOMAIN': SRS_DOMAIN,
+                                 'POSTSRSD_SRS_EXCLUDE_DOMAINS': "o'brien.example"})
+
+    sourced = container_exec(relay, [
+        "sh", "-c", '. /etc/default/postsrsd ; printf "%s" "$SRS_EXCLUDE_DOMAINS"'])
+
+    assert sourced == "o'brien.example"
+    assert process_running(relay, 'postsrsd')
+
+
 @pytest.mark.smoke
 def test_the_container_refuses_to_start_without_postsrsd(postfix_factory):
     """Debian builds no postsrsd for armhf, so the arm/v7 image has none.

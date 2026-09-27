@@ -115,6 +115,11 @@ def test_a_notice_actually_reaches_the_address(postfix_shared, mailpit):
     assert [to['Address'] for to in notice['To']] == [POSTMASTER]
     assert 'Host or domain name not found' in notice['Text']
 
+    # The sender's bounce for the same message is still on its way. Left
+    # there, it lands after the next test has emptied the mailbox and answers
+    # that test's own wait for a bounce, which then checks nothing (issue #23).
+    mailpit.wait_for_message('Undelivered Mail Returned to Sender')
+
 
 def test_the_recipients_are_inert_at_the_default_notify_classes(postfix_shared,
                                                                 mailpit):
@@ -153,3 +158,7 @@ def test_the_sender_still_gets_its_own_bounce(postfix_shared, mailpit):
     bounce = mailpit.wait_for_message('Undelivered Mail Returned to Sender')
 
     assert [to['Address'] for to in bounce['To']] == [SENDER]
+
+    # And the postmaster copy, so it is not left to arrive in whatever test
+    # this worker runs next.
+    mailpit.wait_for_message('Postmaster Copy: Undelivered Mail')
