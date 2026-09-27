@@ -3,12 +3,20 @@
 
 name: Auto-update pull request branches
 
-# "Require branches to be up to date before merging" leaves every other open
-# pull request one commit behind master as soon as one of them is merged, and
-# each of them then needs its "Update branch" button pressed by hand. This
-# workflow presses it for them after every merge, for the pull requests that can
-# be updated without a conflict. The ones that do conflict are left alone:
-# resolving them is a decision only their author can make.
+# Every merge leaves the other open pull requests behind master, and the checks
+# they show then describe a master that is gone. This workflow presses their
+# "Update branch" button after every merge, and hourly, for the pull requests
+# that can be updated without a conflict, so what a reviewer reads is the
+# result against the master they would land on. The ones that do conflict are
+# left alone: resolving them is a decision only their author can make.
+#
+# It is best effort, and master does not require it: "Require branches to be
+# up to date before merging" is off in .github/rulesets/master.json, and has to
+# stay off. A pull request this cannot reach -- one that conflicts, one from a
+# fork, a draft, or any of them between a Dependabot merge and the next
+# scheduled run below -- would be blocked by that setting rather than merely
+# behind. So would Dependabot's own, which this leaves to Dependabot on purpose
+# (the loop below says why).
 #
 # GitHub's own answer to this problem is the merge queue, which tests and merges
 # pull requests against an up-to-date master without anyone updating anything.
@@ -26,13 +34,6 @@ name: Auto-update pull request branches
 # that one. Set it to "false" to leave those pull requests alone instead.
 # master itself stays linear either way, because pull requests are
 # squash-merged: a merge commit on a branch does not survive the squash.
-#
-# Dependabot's pull requests are updated like any other. Dependabot would get
-# there on its own, rebasing at its next scheduled run, but a weekly schedule
-# leaves an update queued for auto-merge behind for up to a week. What this
-# does not see is the merge the auto-merge makes: that one is performed with the
-# GITHUB_TOKEN, whose pushes start no workflow, so the pull requests it leaves
-# behind wait for the next human merge, a run started by hand, or Dependabot.
 #
 # Rebasing force-pushes the branch, so the commits of an updated pull request
 # get new SHAs -- the review comments already written on it are marked outdated,
@@ -87,6 +88,13 @@ name: Auto-update pull request branches
 on:
   push:
     branches: [master]
+  # A Dependabot update is merged in GITHUB_TOKEN's name, and a push made with
+  # that token starts no workflow, this one included. The schedule is what
+  # reaches the pull requests those merges leave behind, within the hour. A run
+  # that finds nothing behind changes nothing, and on a public repository its
+  # minutes cost nothing either
+  schedule:
+    - cron: "17 * * * *"
   # Lets the whole set be caught up by hand -- after a run failed on a credential
   # that had lapsed, or simply to see the thing work without waiting for a merge
   workflow_dispatch:
@@ -234,14 +242,15 @@ jobs:
 
           updated=0
           for number in "${pull_requests[@]}"; do
-            # GitHub computes mergeability lazily, and the push that started
-            # this run invalidated it for every open pull request -- the answer
+            # GitHub computes mergeability lazily, and every push to master
+            # invalidates it for every open pull request -- the answer
             # is "null" until the background job that recomputes it is done, so
             # the first read is really what asks the question and the next ones
             # wait for the answer
             mergeable="null"
             head_sha=""
             node_id=""
+            author=""
             for _ in 1 2 3 4 5; do
               if ! pull_request="$(gh api "repos/$REPOSITORY/pulls/$number")"; then
                 break
@@ -250,6 +259,9 @@ jobs:
               head_sha="$(jq --raw-output '.head.sha' <<< "$pull_request")"
               # The GraphQL mutation addresses the pull request by node ID
               node_id="$(jq --raw-output '.node_id' <<< "$pull_request")"
+              author="$(jq --raw-output '.user.login' <<< "$pull_request")"
+              # Skipped below whatever it answers, so not worth waiting for
+              [ "$author" = "dependabot[bot]" ] && break
               [ "$mergeable" != "null" ] && break
               sleep 5
             done
@@ -259,8 +271,27 @@ jobs:
               continue
             fi
 
+            # Dependabot's pull requests are Dependabot's to keep level. A
+            # rebase or a merge pushed by anyone else replaces the commit
+            # Dependabot signed with one it did not, and
+            # dependabot-auto-merge.yml's dependabot/fetch-metadata refuses a
+            # commit whose signature is not Dependabot's: that job then fails
+            # on the new head, and an update whose merge it had not queued yet
+            # never gets it queued. Dependabot, which only resolves the
+            # conflicts of a pull request nobody else has pushed to, would
+            # stop resolving this one's as well.
+            # Left behind, it is blocked by nothing, since master does not
+            # require a branch to be up to date, and Dependabot rebases it
+            # itself once it conflicts. The identity is the one the REST API
+            # gives and the one that workflow checks, "dependabot[bot]", rather
+            # than whatever spelling gh uses for a bot in its own output
+            if [ "$author" = "dependabot[bot]" ]; then
+              echo "Pull request #$number is Dependabot's, leaving it to Dependabot."
+              continue
+            fi
+
             if [ "$mergeable" = "null" ]; then
-              echo "::warning::Pull request #$number: GitHub did not say in time whether it can be merged, skipping it. The next push to master will try again."
+              echo "::warning::Pull request #$number: GitHub did not say in time whether it can be merged, skipping it. The next run will try again."
               continue
             fi
 

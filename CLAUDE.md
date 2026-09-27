@@ -57,7 +57,7 @@ which is where contributor branches lived then.
 | `.github/workflows/lint.yml` | `name: lint`. Two jobs, each pinned and checksummed: `shellcheck`, displayed as **ShellCheck**, runs `shellcheck -S error` over `run`, `healthcheck`, the session-start hook and the sign-off check — the only threshold the image scripts pass; `ruff`, displayed as **Ruff**, runs `ruff check --no-cache --select F,B tests` — pyflakes and bugbear over all the python in the tree. The only two linters there are, and neither reads a config file. |
 | `.github/workflows/scan.yml` | `name: scan`. One job, `trivy`, displayed as **Image Scan**: on a daily `schedule:` and on `workflow_dispatch`, downloads a pinned, checksummed trivy and scans the *published* image at `--ignore-unfixed --severity HIGH,CRITICAL`. The only workflow with a `schedule:`, and the only one that reports nothing on a pull request at all — `test-results.yml` has no `pull_request` trigger either, but its `workflow_run` on `test` puts a check there anyway. Files one issue when it finds something and closes it when it stops, which is the only thing in the tree that writes to the tracker; each of the first `MAX_REBUILD_ATTEMPTS` runs that finds the issue still open also dispatches **ci.yml** on `master` with `no-cache` set, *waits for that run* and re-scans what it published, so the run that applied the remedy is the one that closes the issue rather than the next morning's — see invariant 36. The waiting is why its `timeout-minutes` is the longest in the tree, and why the wait has a bound of its own well inside it: a job killed by `timeout-minutes` is *cancelled* rather than failed, and github's notification for a scheduled run fires on failure. |
 | `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates, by squash because `master` refuses a merge commit. Its header comment records the check names that *exist* and what it needs from the repository settings and the ruleset; which of them are *required* is the ruleset below. |
-| `.github/workflows/auto_update_pull_request_branches.yml` | On every push to `master`, and on `workflow_dispatch`: rebases every open, conflict-free, non-draft pull request that `master` left behind, which "Require branches to be up to date" would otherwise leave to a hand-pressed *Update branch*. Ported from Dell_iDRAC_fan_controller_Docker; its header says why it needs a GitHub App or a personal access token rather than the `GITHUB_TOKEN`. |
+| `.github/workflows/auto_update_pull_request_branches.yml` | On every push to `master`, hourly, and on `workflow_dispatch`: rebases every open, conflict-free, non-draft pull request that `master` left behind, so that the checks a reviewer reads describe the `master` it would land on. Best effort, and not required: "Require branches to be up to date" is off, and Dependabot's pull requests are left to Dependabot, since a rebase pushed by anyone else strips the signature the auto-merge checks. Ported from Dell_iDRAC_fan_controller_Docker; its header says why it needs a GitHub App or a personal access token rather than the `GITHUB_TOKEN`. |
 | `.github/workflows/sign_off.yml` | `name: sign-off`. One job, displayed as **Sign-off**, on `pull_request` only: checks out with `fetch-depth: 0` and runs `.github/check_sign_off.sh` over the pull request's base and head. Not on `master`, whose squashes no longer carry the branch's trailers and whose older history is unsigned, and not on `workflow_dispatch`, which has no range. |
 | `.github/check_sign_off.sh` | The decision the **Sign-off** check reports: every non-merge commit in `base..head` carries a well-formed `Signed-off-by` read through git's own trailer parser, every commit the agent authored carries the maintainer's sign-off, so the tool never certifies its own work, and no commit names the agent as a co-author of somebody else's work. Fails closed — an empty or unreadable range is a refusal, not a pass — and is the one script in the tree under `set -e`, for that reason. |
 | `LICENSE` | The GNU Affero General Public License v3.0 text, unmodified. The project is `AGPL-3.0-only`; it was MIT until the commit that added `NOTICE`. |
@@ -429,22 +429,31 @@ Notes a contributor will hit:
   `claude` account the sessions commit as are both accounts. Every `context`
   pins `integration_id` 15368, GitHub Actions, so no other app can report a
   required check under the same name.
-  `strict_required_status_checks_policy` is true: a branch has to contain
-  `master`'s head before it merges, so each merge leaves every other open pull
-  request to be updated and re-checked. The merge queue, GitHub's own answer,
-  needs a repository owned by an organisation, and auto-merge does not update
-  a branch, so `auto_update_pull_request_branches.yml` does it: on every push
-  to `master` it rebases each conflict-free, non-draft pull request left
-  behind, falling back to a merge commit on the branch — which the squash then
-  discards. It needs a GitHub App or a personal access token, because an
-  update the `GITHUB_TOKEN` pushes leaves the checks waiting for someone to
-  approve the run; the header says which variable and secrets it reads, and
-  the run fails saying so while none is set. The one merge it never hears of
-  is the Dependabot auto-merge's, made with the `GITHUB_TOKEN`, whose pushes
-  start no workflow; what that leaves behind waits for the next human merge, a
-  run started by hand, or Dependabot itself, which its documentation has
-  rebase on a conflict and when its schedule next runs. `tests/test_ruleset.py`
-  fails if strict mode is recorded with nothing left to update branches.
+  `strict_required_status_checks_policy` is false, and has to stay so: pull
+  requests are kept level with `master`, never required to be. With it on,
+  whatever cannot be updated automatically — a conflict, a fork, a draft,
+  Dependabot's own, and every pull request after a Dependabot merge — would be
+  blocked rather than behind. The merge queue, GitHub's own answer, needs a
+  repository owned by an organisation, and auto-merge does not update a branch,
+  so `auto_update_pull_request_branches.yml` does it: after every push to
+  `master` and hourly, it rebases each conflict-free, non-draft pull request
+  left behind, falling back to a merge commit on the branch — which the squash
+  then discards. The hourly run is for the one merge it never hears of, the
+  Dependabot auto-merge's, made with the `GITHUB_TOKEN`, whose pushes start no
+  workflow. It leaves Dependabot's own pull requests to Dependabot: a rebase
+  pushed by anyone else replaces the commit Dependabot signed, and
+  `dependabot/fetch-metadata` in `dependabot-auto-merge.yml` then refuses it,
+  so the merge is never queued
+  (tigerblue77/Dell_iDRAC_fan_controller_Docker#514). It needs a GitHub App or
+  a personal access token, because an update the `GITHUB_TOKEN` pushes leaves
+  the checks waiting for someone to approve the run; the header says which
+  variable and secrets it reads, and the run fails saying so while none is set.
+  What strict mode bought, a pull request tested against the `master` it lands
+  on, is what the updater gives wherever it can reach, and is paid for after
+  the merge everywhere else: **Verify Published Image** runs on every push to
+  `master`, and `latest` does not move until it passes. `tests/test_ruleset.py`
+  fails if strict mode is turned on, if the updater loses its schedule, or if
+  it pushes to a Dependabot pull request.
 - **The pytest step has `timeout-minutes: 10`** inside a 20-minute job (25/45
   for the emulated one). The job timeouts are backstops: a cancelled job skips
   the upload step, so the bound expected to fire is the step's. Every wait in
@@ -573,23 +582,23 @@ Notes a contributor will hit:
   wader/postfix-relay#191 was about — and a person pasted pre-filled links
   instead; that is why the older history carries forms and links rather than
   bot-authored issues.
-- **Open every issue and pull request assigned to `tigerblue77`, and never as
-  a draft.** The same rule holds in every repository of this maintainer, and
+- **Open every issue and pull request assigned to `tigerblue77`, and never as a
+  draft.** The same rule holds in every repository of this maintainer, and
   Dell_iDRAC_fan_controller_Docker is where it was written first. Both are
   fields on the call that creates the thing, and the session that would come
   back to repair them afterwards has ended by then. Draft is the half with a
   price on it: `auto_update_pull_request_branches.yml` skips drafts
-  deliberately, so a pull request opened as one is the pull request "Require
-  branches to be up to date" leaves further behind `master` at every merge,
-  owing a hand-pressed *Update branch* at the moment somebody wanted to merge
-  it — and it has to be converted before it can be merged at all, so the state
-  buys nothing here. A session's harness may say to open a draft; this rule is
-  the answer to that. Unassigned is quieter and costs the same way: the
+  deliberately, so a pull request opened as one is the one `master`'s moves
+  never reach: it falls further behind at every merge, its checks go on
+  describing a `master` that is gone, and it has to be converted by hand before
+  it can be merged at all, at the moment somebody wanted to merge it — so the
+  state buys nothing here. A session's harness may say to open a draft; this
+  rule is the answer to that. Unassigned is quieter and costs the same way: the
   maintainer's *Assigned* list is where the work is scheduled, and what is not
   on it has to be remembered instead. The session-start hook says both at the
   start of every Claude Code on the web session, and `tests/test_sign_off.py`
-  holds it to that. **This governs the maintainer's sessions, not everyone
-  who clones the repository**: the hook says it only where `origin` is
+  holds it to that. **This governs the maintainer's sessions, not everyone who
+  clones the repository**: the hook says it only where `origin` is
   `tigerblue77`'s, and says nothing of it on a fork. A contributor's pull
   request is theirs to assign and theirs to open as a draft, which is what the
   branch updater's filter is there to protect.
