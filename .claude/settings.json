@@ -10,5 +10,12 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pytest)",
+      "Bash(ruff check --no-cache --select F,B tests)",
+      "Bash(shellcheck:*)"
+    ]
   }
 }
