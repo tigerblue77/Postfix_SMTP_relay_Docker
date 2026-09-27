@@ -10,8 +10,8 @@ unless they ask for more (issue wader/postfix-relay#58).
 
 import re
 
-from tests.helpers import (container_exec, container_log, file_missing, restart,
-                           send, wait_for_file, wait_for_log)
+from tests.helpers import (container_exec, container_log, file_missing, process_running,
+                           restart, send, wait_for_file, wait_for_log)
 
 MAIL_LOG_LINE = re.compile(r'^postfix/\w+\[\d+\]: ')
 TIMESTAMPED_MAIL_LOG_LINE = re.compile(r'^\d{4}-\d{2}-\d{2}T[\d:.+]+ \S+ postfix/\w+\[\d+\]: ')
@@ -218,6 +218,58 @@ def test_a_file_log_is_written_beside_the_container_log_and_not_instead_of_it(
 
     assert wait_for_file(relay, '/var/log/mail.log', 'status=sent')
     assert postfix_log_lines(relay)
+
+
+def test_a_file_log_truncated_in_place_is_written_again_from_its_start(
+        postfix_factory, mailpit):
+    """What copytruncate does to the file, done by hand.
+
+    The container rotates nothing, so the README has the file rotated from the
+    host with copytruncate, which works only if rsyslogd appends. One that
+    wrote at the offset it had reached would put the next line after a hole as
+    long as everything truncated, and the rotation would free nothing.
+    Issue #30.
+    """
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes'})
+
+    send(relay, subject='before the truncation')
+    mailpit.wait_for_message('before the truncation')
+    wait_for_file(relay, '/var/log/mail.log', 'status=sent')
+
+    container_exec(relay, ["truncate", "-s", "0", "/var/log/mail.log"])
+
+    send(relay, subject='after the truncation')
+    mailpit.wait_for_message('after the truncation')
+    logged = wait_for_file(relay, '/var/log/mail.log', 'status=sent')
+
+    assert '\0' not in logged
+    assert logged.count('status=sent') == 1
+
+
+def test_a_renamed_file_log_is_reopened_when_rsyslogd_is_sent_hup(postfix_factory, mailpit):
+    """The README's other rotation: rename, then "pkill -HUP rsyslogd".
+
+    rsyslogd goes on writing into a renamed file until it is told to reopen it,
+    and HUP is how. It reopens rather than exiting, which matters as much: the
+    supervision loop in run stops the relay when rsyslogd goes away. Issue #30.
+    """
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes'})
+
+    send(relay, subject='before the rename')
+    mailpit.wait_for_message('before the rename')
+    wait_for_file(relay, '/var/log/mail.log', 'status=sent')
+
+    container_exec(relay, ["mv", "/var/log/mail.log", "/var/log/mail.log.1"])
+    container_exec(relay, ["pkill", "-HUP", "-x", "rsyslogd"])
+
+    send(relay, subject='after the rename')
+    mailpit.wait_for_message('after the rename')
+
+    assert wait_for_file(relay, '/var/log/mail.log', 'status=sent').count('status=sent') == 1
+    assert container_exec(relay, ["cat", "/var/log/mail.log.1"]).count('status=sent') == 1
+    assert process_running(relay, 'rsyslogd')
+    relay.get_wrapped_container().reload()
+    assert relay.get_wrapped_container().status == 'running'
 
 
 def test_the_timestamp_setting_applies_to_the_file_log_too(postfix_factory, mailpit):
