@@ -72,7 +72,10 @@ jobs:
         # stock threshold as well as this one, so gating them can only ever go
         # red on a future edit to them. All four carry a #!/bin/bash shebang,
         # which is where shellcheck reads the dialect from, so there is no -s
-        # to pass.
+        # to pass. The list is written out because no directory holds only
+        # shell scripts, so a new one has to be added here by hand;
+        # tests/test_lint.py fails until it is, and on a name that no longer
+        # is one.
         run: |
           shellcheck --version
           shellcheck -S error run healthcheck .claude/hooks/session-start.sh .github/check_sign_off.sh

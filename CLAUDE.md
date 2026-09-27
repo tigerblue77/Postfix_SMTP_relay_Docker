@@ -41,7 +41,7 @@ which is where contributor branches lived then.
 | `.claude/hooks/session-start.sh` | Starts the docker daemon and installs `tests/requirements.txt`, because a Claude Code on the web container has neither and both gates need them. Guarded on `CLAUDE_CODE_REMOTE=true`, so a local checkout is untouched, and best-effort: a failed step explains itself on stderr and the hook still exits 0, so check stderr before believing a build or test failure. Before either, and only where `origin` is `tigerblue77`'s repository, it sets the repository-local identity a commit here needs: `Claude <noreply@anthropic.com>` as the author and a `git signoff` alias carrying the maintainer's `Signed-off-by` — see [Conventions](#conventions). On the maintainer's copy it also reminds the session, on stdout, that an issue or pull request opened here is assigned to `tigerblue77` and is never a draft; on a fork it sets nothing, says nothing of that rule, and says so. |
 | `tests/__init__.py` | Empty; makes `tests` a package, which is what lets `conftest.py` name plugins as `tests.fixtures.*` and lets modules do `from tests.helpers import …`. pytest therefore has to be run from the repo root. There is no `tests/fixtures/__init__.py`. |
 | `tests/conftest.py` | Registers the four fixture modules as pytest plugins, and defines the failure plumbing: `print_log_on_failure`, an autouse `shared_container_logs` fixture, and a `pytest_runtest_makereport` wrapper hook that stashes the report on the item. |
-| `tests/helpers.py` | The shared vocabulary — `poll_until`, `once_across_workers`, `wait_for_smtp`, `send`, `container_exec`, `postconf`, `listening_ports`, `exit_code_within` and the rest. Imported by every test module but `test_sendmail.py`, `test_ruleset.py`, `test_ci.py`, `test_scan.py` and `test_sign_off.py`, and by three of the four fixture modules. `file_missing` is the one that cannot be spelled with `container_exec`, which fails on a non-zero exit: asking whether a path is absent needs the exit code, not the output. |
+| `tests/helpers.py` | The shared vocabulary — `poll_until`, `once_across_workers`, `wait_for_smtp`, `send`, `container_exec`, `postconf`, `listening_ports`, `exit_code_within` and the rest. Imported by every test module but `test_sendmail.py`, `test_ruleset.py`, `test_ci.py`, `test_scan.py`, `test_sign_off.py` and `test_lint.py`, and by three of the four fixture modules. `file_missing` is the one that cannot be spelled with `container_exec`, which fails on a non-zero exit: asking whether a path is absent needs the exit code, not the output. |
 | `tests/requirements.txt` | Seven pinned packages: `dkimpy`, `docker`, `pytest`, `pytest-xdist`, `pyyaml`, `requests`, `testcontainers[mailpit]`. `dkimpy` is what satisfies `import dkim`, so grepping module names against this file looks like a miss when it is not; `pyyaml` is there for `test_ruleset.py` alone. |
 | `tests/fixtures/shared_network.py` | Session-scoped `shared_network`: a testcontainers `Network()` with a generated, labelled name — not a fixed one, so an interrupted run leaves nothing for the next one to collide with. |
 | `tests/fixtures/postfix.py` | Seven fixtures: `postfix_image`, `upgrade_from_image`, `postfix` and `_relay_pool` (session, the last being the per-configuration relay pool); `postfix_factory`, `postfix_shared` and `docker_volume` (function). Every relay gets `POSTFIX_relayhost=mailpit:1025`, set before the caller's env so a test can override it; readiness is an SMTP connection, not a log line. Reads `POSTFIX_RELAY_IMAGE` / `POSTFIX_RELAY_ARCH` / `POSTFIX_RELAY_IMAGE_PUBLISHED`, and the released image out of `tests/upgrade-from.Dockerfile`. |
@@ -49,7 +49,7 @@ which is where contributor branches lived then.
 | `tests/upgrade-from.Dockerfile` | The other unbuilt anchor: one `FROM mwader/postfix-relay:<version>` line, read back by `tests/fixtures/postfix.py`, naming the released image `tests/test_upgrade.py` starts before the one built from the tree. A release and not `latest` — see invariant 33. |
 | `tests/fixtures/mailpit.py` | The remote-SMTP stand-in, whose image is read from `tests/mailpit.Dockerfile` rather than written here: a `Mailpit` REST client class plus `mailpit_image` and `mailpit_container` (session), `mailpit` and `mailpit_factory` (function). Also rebinds the library's `wait_for_logs` to a `functools.partial` with a shorter poll interval. |
 | `tests/fixtures/smtp.py` | `smtplib` client against the shared `postfix` relay's mapped port 25. Function-scoped on purpose: the tests about rejected mail leave the connection broken. |
-| `tests/test_*.py` | `capabilities`, `ci`, `client_tls`, `config`, `defaults`, `dkim`, `healthcheck`, `image`, `lifecycle`, `logging`, `postmaster`, `qshape`, `ruleset`, `sasl`, `scan`, `secrets`, `sendmail`, `sign_off`, `smtp`, `srs`, `upgrade`. Each has a row in the README's per-file table. |
+| `tests/test_*.py` | `capabilities`, `ci`, `client_tls`, `config`, `defaults`, `dkim`, `healthcheck`, `image`, `lifecycle`, `lint`, `logging`, `postmaster`, `qshape`, `ruleset`, `sasl`, `scan`, `secrets`, `sendmail`, `sign_off`, `smtp`, `srs`, `upgrade`. Each has a row in the README's per-file table. |
 | `tests/img/postfix-logo.png` | The inline image `tests/test_sendmail.py` attaches, and compares byte for byte on the way out. |
 | `.github/workflows/ci.yml` | `name: ci`. Four jobs. `docker`, displayed as **Build Image**: buildx over `linux/amd64,linux/arm/v7,linux/arm64/v8`, GHA build cache, a `docker_meta` that states `org.opencontainers.image.licenses=AGPL-3.0-only` itself because its labels win over the `Dockerfile`'s, nothing pushed from a branch or a pull request and no tag named after the ref (invariant 38), and on `master` the tag it pushes is docker_meta's `sha-<commit>` — never `latest`, and on a tag ref nothing at all: a release builds nothing and instead points the version tags at the `sha-<commit>` image `master` already published and verified. `verify_published_amd64` and `verify_published_arm64`, displayed as **Verify Published Image (amd64)** and **(arm64)**: `needs: docker`, `master` only, each pulls by digest the image that was just pushed and runs `pytest -m smoke` against it — or the *whole* suite when the run is a `no-cache` rebuild, which `test.yml` never sees (invariant 36); the amd64 one first asserts the published manifest lists the three platforms the build asks for. `promote`, displayed as **Publish latest**: `master` only, `needs` all three, and points `latest` at that digest with `imagetools create` — after checking the commit is still `master`'s head, since master runs are not cancelled and two of them would otherwise race to write the tag. Spelled out rather than a matrix, for the reason test.yml gives — the job name is what a required status check and the auto-merge workflow match on — and for one of its own: a matrix expands `${{ matrix.arch }}` only in the runs it starts, so a pull request, where the `if` skips the job whole, reported the raw expression as the check's name. The workflow also takes a `workflow_dispatch` with one boolean input, `no-cache`, wired into both build steps — the remediation lever for an **Image Scan** finding, and the three jobs above verify and tag what it republishes. |
 | `.github/workflows/test.yml` | `name: test`. Four jobs: **Event File**, **Pytest**, **Pytest (arm64)** and **Pytest (arm/v7, emulated)**. Spelled out rather than written as a matrix; the file says why. |
@@ -93,9 +93,9 @@ pytest.ini ──addopts──> pytest-xdist   (-n auto --dist loadfile --maxpro
 tests/test_*.py
     │
     ├──> tests/helpers.py         (every module but test_sendmail.py, and
-    │                              test_ruleset.py, test_ci.py, test_scan.py
-    │                              and test_sign_off.py, which start no
-    │                              container)
+    │                              test_ruleset.py, test_ci.py, test_scan.py,
+    │                              test_sign_off.py and test_lint.py, which
+    │                              start no container)
     │        └── once_across_workers  -> builds/pulls the image once per RUN,
     │                                     not once per xdist worker
     └──> fixtures, registered in tests/conftest.py as pytest_plugins:
@@ -184,12 +184,13 @@ it only ever builds the host's — follow the cross-build recipe in
 [README.md](README.md#testing). It pins the same binfmt image CI does, so a
 failure there means the same thing.
 
-Four modules run without a docker daemon: `test_ruleset.py`, which reads
+Five modules run without a docker daemon: `test_ruleset.py`, which reads
 `.github/rulesets/master.json` and the workflows, `test_ci.py`, which reads
 `.github/workflows/ci.yml` and the `Dockerfile`, `test_scan.py`, which reads
-`.github/workflows/scan.yml`, and `test_sign_off.py`, which builds throwaway
-git repositories and runs `.github/check_sign_off.sh` and the session-start
-hook against them. None of them starts a container. Everything else needs
+`.github/workflows/scan.yml`, `test_lint.py`, which compares the scripts
+`.github/workflows/lint.yml` names with the ones git tracks, and
+`test_sign_off.py`, which builds throwaway git repositories and runs
+`.github/check_sign_off.sh` and the session-start hook against them. None of them starts a container. Everything else needs
 one. Most tests start a real relay; the exception is
 `test_image.py`, which starts none — it
 reads `docker inspect` output through `image_config`, asks a throwaway `sleep`
@@ -542,7 +543,11 @@ Notes a contributor will hit:
   the refusal, rather than a pass — function brace on its own line,
   `[ ... ] ; then` with spaces around the `;`, four-space bodies inside
   functions and two-space bodies in top-level blocks, and a comment above
-  each block explaining the intent rather than the syntax.
+  each block explaining the intent rather than the syntax. A new shell script
+  is added by hand to the **ShellCheck** step in `lint.yml`, which names its
+  files one by one because nothing else holds only them; one missing from it
+  is analysed by nothing while the check stays green, and
+  `tests/test_lint.py` fails until it is there.
 - **Tests.** Behaviour the README promises is pinned by a test. Three rules the
   plumbing does not enforce for you:
   - a fixture that stops a container calls `print_log_on_failure` *first*,
