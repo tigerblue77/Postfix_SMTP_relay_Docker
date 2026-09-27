@@ -616,9 +616,17 @@ Notes a contributor will hit:
   is public and outside that organisation, so it holds here in full. An issue
   or a pull request found breaking it is never let pass silently: the
   maintainer is told, every time, with the link, and offered a translation,
-  which is made once they agree and not before. (issues
-  Tigerblue77-personal/Homelab_Ansible_deployment#1006 and
-  Tigerblue77-personal/Homelab_Ansible_deployment#1037)
+  which is made once they agree and not before. (issues #47 and #49)
+- **A public repository never names a private one.** Not its name, not its
+  issues or pull requests, and nothing of what it holds — in files, commit
+  messages, branch names, issues, pull requests and comments alike. This one
+  is public, and a citation that resolves for the maintainer alone still
+  tells every other reader that the private repository exists, what it is
+  called and what is in it. A rule shared across the maintainer's
+  repositories is therefore carried here without its origin whenever that
+  origin is private. Naming the public `Dragnix-Tigerblue77` organisation is
+  fine, and so is "the maintainer's private repositories" in general.
+  (issue #57)
 - **Nothing is assumed: an ambiguity is a question, not a judgement call.**
   Where two readings of an instruction would lead to materially different work,
   the question is put before the work starts, even though asking costs a round
