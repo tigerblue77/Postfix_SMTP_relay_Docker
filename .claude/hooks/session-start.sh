@@ -180,9 +180,8 @@ if [ "$maintainersCopy" == "yes" ] ; then
   # here chose -- and the session that would come back to repair them has
   # ended by then. CLAUDE.md, "Conventions", carries the argument; this
   # carries the reminder, because a rule that has to be recalled every time
-  # is a rule that gets forgotten. Ported from
-  # Dell_iDRAC_fan_controller_Docker: the same rule holds in every repository
-  # of this maintainer.
+  # is a rule that gets forgotten. The same rule holds in every repository of
+  # this maintainer.
   echo "session-start: an issue or pull request opened here is assigned to $maintainerLogin and is never a draft -- see CLAUDE.md, \"Conventions\""
 else
   # Not silence, but only the sentence that is the contributor's own: their

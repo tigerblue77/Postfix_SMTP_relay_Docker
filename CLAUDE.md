@@ -57,7 +57,7 @@ which is where contributor branches lived then.
 | `.github/workflows/lint.yml` | `name: lint`. Two jobs, each pinned and checksummed: `shellcheck`, displayed as **ShellCheck**, runs `shellcheck -S error` over `run`, `healthcheck`, the session-start hook and the sign-off check — the only threshold the image scripts pass; `ruff`, displayed as **Ruff**, runs `ruff check --no-cache --select F,B tests` — pyflakes and bugbear over all the python in the tree. The only two linters there are, and neither reads a config file. |
 | `.github/workflows/scan.yml` | `name: scan`. One job, `trivy`, displayed as **Image Scan**: on a daily `schedule:` and on `workflow_dispatch`, downloads a pinned, checksummed trivy and scans the *published* image at `--ignore-unfixed --severity HIGH,CRITICAL`. The only workflow with a `schedule:`, and the only one that reports nothing on a pull request at all — `test-results.yml` has no `pull_request` trigger either, but its `workflow_run` on `test` puts a check there anyway. Files one issue when it finds something and closes it when it stops, which is the only thing in the tree that writes to the tracker; each of the first `MAX_REBUILD_ATTEMPTS` runs that finds the issue still open also dispatches **ci.yml** on `master` with `no-cache` set, *waits for that run* and re-scans what it published, so the run that applied the remedy is the one that closes the issue rather than the next morning's — see invariant 36. The waiting is why its `timeout-minutes` is the longest in the tree, and why the wait has a bound of its own well inside it: a job killed by `timeout-minutes` is *cancelled* rather than failed, and github's notification for a scheduled run fires on failure. |
 | `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates, by squash because `master` refuses a merge commit. Its header comment records the check names that *exist* and what it needs from the repository settings and the ruleset; which of them are *required* is the ruleset below. |
-| `.github/workflows/auto_update_pull_request_branches.yml` | On every push to `master`, hourly, and on `workflow_dispatch`: rebases every open, conflict-free, non-draft pull request that `master` left behind, so that the checks a reviewer reads describe the `master` it would land on. Best effort, and not required: "Require branches to be up to date" is off, and Dependabot's pull requests are left to Dependabot, since a rebase pushed by anyone else strips the signature the auto-merge checks. Ported from Dell_iDRAC_fan_controller_Docker; its header says why it needs a GitHub App or a personal access token rather than the `GITHUB_TOKEN`. |
+| `.github/workflows/auto_update_pull_request_branches.yml` | On every push to `master`, hourly, and on `workflow_dispatch`: rebases every open, conflict-free, non-draft pull request that `master` left behind, so that the checks a reviewer reads describe the `master` it would land on. Best effort, and not required: "Require branches to be up to date" is off, and Dependabot's pull requests are left to Dependabot, since a rebase pushed by anyone else strips the signature the auto-merge checks. Its header says why it needs a GitHub App or a personal access token rather than the `GITHUB_TOKEN`. |
 | `.github/workflows/sign_off.yml` | `name: sign-off`. One job, displayed as **Sign-off**, on `pull_request` only: checks out with `fetch-depth: 0` and runs `.github/check_sign_off.sh` over the pull request's base and head. Not on `master`, whose squashes no longer carry the branch's trailers and whose older history is unsigned, and not on `workflow_dispatch`, which has no range. |
 | `.github/check_sign_off.sh` | The decision the **Sign-off** check reports: every non-merge commit in `base..head` carries a well-formed `Signed-off-by` read through git's own trailer parser, every commit the agent authored carries the maintainer's sign-off, so the tool never certifies its own work, and no commit names the agent as a co-author of somebody else's work. Fails closed — an empty or unreadable range is a refusal, not a pass — and is the one script in the tree under `set -e`, for that reason. |
 | `LICENSE` | The GNU Affero General Public License v3.0 text, unmodified. The project is `AGPL-3.0-only`; it was MIT until the commit that added `NOTICE`. |
@@ -445,11 +445,10 @@ Notes a contributor will hit:
   workflow. It leaves Dependabot's own pull requests to Dependabot: a rebase
   pushed by anyone else replaces the commit Dependabot signed, and
   `dependabot/fetch-metadata` in `dependabot-auto-merge.yml` then refuses it,
-  so the merge is never queued
-  (tigerblue77/Dell_iDRAC_fan_controller_Docker#514). It needs a GitHub App or
-  a personal access token, because an update the `GITHUB_TOKEN` pushes leaves
-  the checks waiting for someone to approve the run; the header says which
-  variable and secrets it reads, and the run fails saying so while none is set.
+  so the merge is never queued. It needs a GitHub App or a personal access
+  token, because an update the `GITHUB_TOKEN` pushes leaves the checks
+  waiting for someone to approve the run; the header says which variable and
+  secrets it reads, and the run fails saying so while none is set.
   What strict mode bought, a pull request tested against the `master` it lands
   on, is what the updater gives wherever it can reach, and is paid for after
   the merge everywhere else: **Verify Published Image** runs on every push to
@@ -533,8 +532,7 @@ Notes a contributor will hit:
   already says it, and the check refuses the agent as a co-author of a commit
   somebody else authored. `master`'s history before this carries no trailer,
   Dependabot's commits apart, and stays that way: signing it would mean
-  rewriting a published branch. The same arrangement, script and hook are
-  Dell_iDRAC_fan_controller_Docker's, ported.
+  rewriting a published branch.
 - **License headers.** Every source file carries the two-line SPDX header
   `CONTRIBUTING.md` spells out — `run`, `healthcheck`, the session-start
   hook and `.github/check_sign_off.sh` right after the shebang, every Python
@@ -545,11 +543,12 @@ Notes a contributor will hit:
   under `tests/`, the JSON files, `pytest.ini`, `tests/requirements.txt`,
   `.dockerignore`, `.gitignore`, `LICENSE`, `NOTICE`, `README.md`,
   `SECURITY.md` nor this file has one.
-  `auto_update_pull_request_branches.yml` is the one header that differs: it
-  was ported from Dell_iDRAC_fan_controller_Docker, and keeps the notice it
-  carried there. The project is `AGPL-3.0-only` with a commercial alternative
-  ([LICENSE](LICENSE), [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md),
-  [NOTICE](NOTICE)); it was MIT until the commit that added `NOTICE`.
+  `auto_update_pull_request_branches.yml` is the one header that differs: its
+  copyright line is the notice the file was first published under, and a
+  copyright notice is kept as written rather than normalised. The project is
+  `AGPL-3.0-only` with a commercial alternative ([LICENSE](LICENSE),
+  [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md), [NOTICE](NOTICE)); it was
+  MIT until the commit that added `NOTICE`.
 - **Shell style.** The four shell scripts — `run`, `healthcheck`,
   `.claude/hooks/session-start.sh` and `.github/check_sign_off.sh` — are all
   `#!/bin/bash`. No `set -e` (see below) — except in `check_sign_off.sh`,
@@ -585,8 +584,7 @@ Notes a contributor will hit:
   instead; that is why the older history carries forms and links rather than
   bot-authored issues.
 - **Open every issue and pull request assigned to `tigerblue77`, and never as a
-  draft.** The same rule holds in every repository of this maintainer, and
-  Dell_iDRAC_fan_controller_Docker is where it was written first. Both are
+  draft.** The same rule holds in every repository of this maintainer. Both are
   fields on the call that creates the thing, and the session that would come
   back to repair them afterwards has ended by then. Draft is the half with a
   price on it: `auto_update_pull_request_branches.yml` skips drafts
@@ -619,16 +617,27 @@ Notes a contributor will hit:
   An issue or a pull request found breaking it is never let pass silently: the
   maintainer is told, every time, with the link, and offered a translation,
   which is made once they agree and not before. (issues #47 and #49)
-- **A public repository never names a private one.** Not its name, not its
-  issues or pull requests, and nothing of what it holds — in files, commit
-  messages, branch names, issues, pull requests and comments alike. This one
-  is public, and a citation that resolves for the maintainer alone still
-  tells every other reader that the private repository exists, what it is
-  called and what is in it. A rule shared across the maintainer's
-  repositories is therefore carried here without its origin whenever that
-  origin is private. Naming the public `Dragnix-Tigerblue77` organisation is
-  fine, and so is "the maintainer's private repositories" in general.
-  (issue #57)
+- **Another of the maintainer's repositories is named only where this one
+  calls it, and a private one never.** Such a repository is cited — its name,
+  its issues or its pull requests — only where this one calls it: pulls its
+  image, vendors its code, downloads its release, or registers something for
+  it. It is never cited to say where a rule or a lesson came from, that a copy
+  of a rule exists elsewhere, or how the other one does it. That citation is a
+  dependency with nothing keeping it true: the other repository moves on, and
+  nothing here fails when it does. A rule shared across the maintainer's
+  repositories is therefore written out here in full, standing on its own,
+  with no origin; where a sentence made its point through the citation, the
+  point stays and the citation goes. A public repository — this one — never
+  names a private one at all, not even one it calls: not its name, not its
+  issues or pull requests, and nothing of what it holds, in files, commit
+  messages, branch names, issues, pull requests and comments alike. A
+  citation that resolves for the maintainer alone still tells every other
+  reader that the private repository exists, what it is called and what is in
+  it. Naming the public `Dragnix-Tigerblue77` organisation is fine, and so is
+  "the maintainer's private repositories" in general. `wader/postfix-relay`,
+  the upstream this repository was forked from, stays cited: its issue numbers
+  are this history's own, and `tests/upgrade-from.Dockerfile` pulls its image.
+  (issues #57 and #73)
 - **Nothing is assumed: an ambiguity is a question, not a judgement call.**
   Where two readings of an instruction would lead to materially different work,
   the question is put before the work starts, even though asking costs a round
@@ -657,7 +666,6 @@ Notes a contributor will hit:
   one, the simplest first, so that each review starts from a smaller diff than
   the last. "This is ready" makes them work all of that out from the diff,
   which is the work the session was supposed to have already done, done twice.
-  These three are Dell_iDRAC_fan_controller_Docker's, ported.
 - **Docs.** User-visible behaviour goes in `README.md`. If a change makes the
   README wrong, the change is not finished. The same holds for this file, and
   it is the half that gets forgotten: it describes the tree, so a change to
