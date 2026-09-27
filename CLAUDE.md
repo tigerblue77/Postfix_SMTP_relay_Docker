@@ -602,6 +602,35 @@ Notes a contributor will hit:
   which is made once they agree and not before. (issues
   Tigerblue77-personal/Homelab_Ansible_deployment#1006 and
   Tigerblue77-personal/Homelab_Ansible_deployment#1037)
+- **Nothing is assumed: an ambiguity is a question, not a judgement call.**
+  Where two readings of an instruction would lead to materially different work,
+  the question is put before the work starts, even though asking costs a round
+  trip — because guessing costs the work. The judgement being asked for is
+  narrow: routine calls a careful colleague makes alone stay made alone, and
+  what gets asked is what changes the shape of what gets delivered. A default
+  chosen silently is a decision nobody made, and it surfaces at review, which
+  is the most expensive place for it to surface.
+- **A reply is as short as the decision it carries.** A wall of prose is
+  skipped whole, which costs more than saying too little: what got skipped
+  included the question. So the verdict first, the numbers behind it, the
+  question that needs an answer, and nothing else. The reasoning that earned a
+  conclusion is not lost by leaving it out — it is in the commit message and
+  the pull request body, where a reviewer can go and find it, and repeating it
+  in the chat is the second copy that drifts. Tables and lists over paragraphs,
+  and never a restatement of what was just asked.
+- **A request to merge says what the pull request brings.** Merging is the
+  maintainer's own act, so the ask carries what they need in order to decide,
+  pull request by pull request: what it does, which goal it serves, what it
+  changes, and — whenever it changes something that runs — how to test it, as
+  the command to type or the thing to watch rather than "CI is green". What in
+  it could not be verified, and why, stays in; here that is often `master`'s
+  side of `ci.yml`, which no pull request runs, or the `arm/v7` image, which
+  only the emulated smoke tests start. Several at once come in the order they
+  want merging in: the one their dependencies impose, and where nothing imposes
+  one, the simplest first, so that each review starts from a smaller diff than
+  the last. "This is ready" makes them work all of that out from the diff,
+  which is the work the session was supposed to have already done, done twice.
+  These three are Dell_iDRAC_fan_controller_Docker's, ported.
 - **Docs.** User-visible behaviour goes in `README.md`. If a change makes the
   README wrong, the change is not finished. The same holds for this file, and
   it is the half that gets forgotten: it describes the tree, so a change to
