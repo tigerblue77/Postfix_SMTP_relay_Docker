@@ -593,15 +593,17 @@ Notes a contributor will hit:
   comments inside `run` and the workflows — and stops at the edge of the tree.
 - **Issues and pull requests are written in English, and one that is not is
   flagged.** Titles, bodies and comments alike. The rule holds in every
-  repository of this maintainer except the private ones of the
-  `Dragnix-Tigerblue77` organisation, where issues and pull requests are
-  written in French while code and commit messages stay in English; this one
-  is public and outside that organisation, so it holds here in full. An issue
-  or a pull request found breaking it is never let pass silently: the
-  maintainer is told, every time, with the link, and offered a translation,
-  which is made once they agree and not before. (issues
-  Tigerblue77-personal/Homelab_Ansible_deployment#1006 and
-  Tigerblue77-personal/Homelab_Ansible_deployment#1037)
+  repository of this maintainer except the private repositories of the
+  `Dragnix-Tigerblue77` organisation, and
+  `Tigerblue77-personal/Homelab_Ansible_deployment`, where issues and pull
+  requests are written in French while code and commit messages stay in
+  English; this one is public and outside that organisation, so it holds here
+  in full. An issue or a pull request found breaking it is never let pass
+  silently: the maintainer is told, every time, with the link, and offered a
+  translation, which is made once they agree and not before. (issues
+  Tigerblue77-personal/Homelab_Ansible_deployment#1006,
+  Tigerblue77-personal/Homelab_Ansible_deployment#1037 and
+  Tigerblue77-personal/Homelab_Ansible_deployment#1046)
 - **Docs.** User-visible behaviour goes in `README.md`. If a change makes the
   README wrong, the change is not finished. The same holds for this file, and
   it is the half that gets forgotten: it describes the tree, so a change to
