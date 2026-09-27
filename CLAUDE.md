@@ -591,6 +591,14 @@ Notes a contributor will hit:
   narrow column down the left of a wide page. The wrapping this repository uses
   is for what is *committed* — this file, the README, commit messages, the
   comments inside `run` and the workflows — and stops at the edge of the tree.
+- **Issues are written in English, and one that is not is flagged.** Titles,
+  bodies and comments alike. The rule holds in every repository of this
+  maintainer except the private ones of the `Dragnix-Tigerblue77`
+  organisation, where another language is fine; this one is public and
+  outside that organisation, so it holds here in full. An issue found
+  breaking it is never let pass silently: the maintainer is told, every time,
+  with the link, and offered a translation, which is made once they agree
+  and not before. (issue Tigerblue77-personal/Homelab_Ansible_deployment#1006)
 - **Docs.** User-visible behaviour goes in `README.md`. If a change makes the
   README wrong, the change is not finished. The same holds for this file, and
   it is the half that gets forgotten: it describes the tree, so a change to
