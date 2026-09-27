@@ -9,21 +9,28 @@ true: a required check is matched by a job's display `name:`, so renaming a
 job without editing the ruleset leaves a context that never reports, and a
 context that never reports blocks every pull request until someone with admin
 rights notices. The same goes for the merge method the Dependabot auto-merge
-asks for, which the ruleset can refuse just as silently.
+asks for, which the ruleset can refuse just as silently, and for the branch
+updater, which the ruleset leaves best effort by not requiring branches to be
+up to date.
 
-Unlike every other module here these tests read files and start nothing, so
-they are the one part of the suite that needs no docker daemon.
+These tests read files, and run the branch updater's step against a stubbed
+`gh`; they start no container, so they need no docker daemon.
 """
 
 import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RULESET = REPO_ROOT / ".github" / "rulesets" / "master.json"
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 AUTO_MERGE = WORKFLOWS / "dependabot-auto-merge.yml"
+UPDATER = WORKFLOWS / "auto_update_pull_request_branches.yml"
 MERGE_METHODS = {"--merge": "merge", "--squash": "squash", "--rebase": "rebase"}
 
 
@@ -139,22 +146,116 @@ def test_dependabot_merges_by_a_method_the_ruleset_allows():
     )
 
 
-def test_strict_mode_has_something_updating_branches():
-    """"Require branches to be up to date" blocks every pull request `master`
-    has moved past until its branch is updated, and nothing here gets a merge
-    queue, which needs an organisation-owned repository. Without the workflow
-    that presses *Update branch* after each merge, turning strict mode on
-    leaves that to a person for every open pull request, Dependabot's
-    included.
+def test_branches_are_not_required_to_be_up_to_date():
+    """"Require branches to be up to date before merging" stays off. With it
+    on, each merge leaves every other open pull request *blocked* until its
+    branch is updated, and what updates them is best effort: the branch
+    updater leaves alone a pull request that conflicts, one from a fork, a
+    draft and Dependabot's own, and it only hears of a Dependabot merge on its
+    next scheduled run, a push made with the `GITHUB_TOKEN` starting no
+    workflow. Each of those would turn from behind into blocked. What the
+    setting bought, a pull request tested against the master it lands on, is
+    what the updater gives wherever it can reach, and is paid for after the
+    merge everywhere else: **Verify Published Image** runs on every push to
+    `master`, and `latest` does not move until it passes.
     """
     checks = [r for r in ruleset()["rules"] if r["type"] == "required_status_checks"]
-    if not checks[0]["parameters"]["strict_required_status_checks_policy"]:
-        return
-    updater = WORKFLOWS / "auto_update_pull_request_branches.yml"
-    assert updater.exists(), (
-        "the ruleset requires branches to be up to date, and nothing updates them"
+    assert checks[0]["parameters"]["strict_required_status_checks_policy"] is False, (
+        "requiring branches to be up to date blocks every pull request the "
+        "branch updater cannot reach, and after a Dependabot merge all of them "
+        "until its next scheduled run"
     )
-    triggers = yaml.safe_load(updater.read_text())[True]
+
+
+def test_the_branch_updater_runs_after_every_merge_and_hourly():
+    """A merge made in the `GITHUB_TOKEN`'s name -- every one the Dependabot
+    auto-merge makes -- starts no workflow, so the push trigger alone leaves
+    what such a merge left behind until somebody else merges. The schedule is
+    what reaches those.
+    """
+    triggers = yaml.safe_load(UPDATER.read_text())[True]
     assert triggers["push"]["branches"] == ["master"], (
-        f"{updater.name} has to run on every push to master, got {triggers}"
+        f"{UPDATER.name} has to run on every push to master, got {triggers}"
+    )
+    assert triggers.get("schedule"), (
+        f"{UPDATER.name} has to run on a schedule too, or nothing updates the "
+        "pull requests a Dependabot merge leaves behind"
+    )
+
+
+GH_STUB = r"""#!/bin/bash
+# Pull request 11 is Dependabot's and 12 a person's, both mergeable and both
+# two commits behind master. --jq is not applied: each answer is already what
+# that filter would extract. Anything else is refused, so a call this stub was
+# not written for fails loudly instead of answering empty
+set -uo pipefail
+printf '%s\n' "$*" >> "$GH_CALL_LOG"
+case "$1 ${2:-}" in
+  "pr list")
+    echo '[{"number":11,"isDraft":false},{"number":12,"isDraft":false}]' ;;
+  "api repos/example/repository/commits/master")
+    echo 'master-sha' ;;
+  "api repos/example/repository/pulls/11")
+    echo '{"user":{"login":"dependabot[bot]"},"mergeable":true,"head":{"sha":"dependabot-sha"},"node_id":"DEPENDABOT_NODE"}' ;;
+  "api repos/example/repository/pulls/12")
+    echo '{"user":{"login":"tigerblue77"},"mergeable":true,"head":{"sha":"person-sha"},"node_id":"PERSON_NODE"}' ;;
+  "api repos/example/repository/compare/"*)
+    echo '2' ;;
+  "api graphql")
+    echo '{"data":{"updatePullRequestBranch":{"pullRequest":{"headRefOid":"rebased-sha"}}}}' ;;
+  *)
+    echo "unexpected gh call: $*" >&2
+    exit 64 ;;
+esac
+"""
+
+
+def test_the_branch_updater_leaves_dependabot_pull_requests_to_dependabot(tmp_path):
+    """A rebase pushed by anyone but Dependabot replaces the commit Dependabot
+    signed, and `dependabot/fetch-metadata` in `dependabot-auto-merge.yml`
+    refuses the result, so an update whose merge was not queued yet never gets
+    queued -- which is what every Dependabot pull request of
+    WD_MyPassport_Linux_unlocker answered once that repository's copy of the
+    updater reached them (tigerblue77/Dell_iDRAC_fan_controller_Docker#514).
+
+    The step runs here as written, over two pull requests equally far behind
+    master, against a stubbed `gh` that records its calls: the one Dependabot
+    opened must see no update at all, and the other must still be rebased, so
+    that a filter skipping everything fails this too.
+    """
+    if shutil.which("jq") is None:
+        pytest.skip("the step reads every answer with jq, which is not installed")
+    steps = yaml.safe_load(UPDATER.read_text())["jobs"]["update-pull-request-branches"]["steps"]
+    [step] = [s for s in steps if s.get("name", "").startswith("Rebase every conflict-free")]
+    script = tmp_path / "step.sh"
+    script.write_text(step["run"])
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text(GH_STUB)
+    gh.chmod(0o755)
+    calls = tmp_path / "gh_calls.log"
+    calls.touch()
+
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "GH_CALL_LOG": str(calls),
+        "GH_TOKEN": "unused",
+        "UPDATING_AS": "the GitHub App",
+        "REPOSITORY": "example/repository",
+        "FALL_BACK_TO_MERGE": "true",
+        "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
+    }
+    result = subprocess.run(["bash", str(script)], env=env, capture_output=True,
+                            text=True, timeout=60)
+    assert result.returncode == 0, (
+        f"the updater's step failed against the stubbed API:\n{result.stdout}{result.stderr}"
+    )
+    logged = calls.read_text()
+    assert "pullRequestId=DEPENDABOT_NODE" not in logged, (
+        f"the updater pushed to Dependabot's pull request:\n{result.stdout}"
+    )
+    assert "pullRequestId=PERSON_NODE" in logged, (
+        f"the updater skipped a person's pull request as well:\n{result.stdout}"
     )
