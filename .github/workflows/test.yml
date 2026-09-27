@@ -21,6 +21,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/master' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
+# Reading the tree is all any job here does with its token. Written here rather
+# than left to the repository's default, which no diff shows and anyone with
+# admin rights can change.
+permissions:
+  contents: read
+
 # The three jobs that run pytest are spelled out rather than written as one
 # matrix. They differ in runner and in what they run, so a matrix would carry
 # more exceptions than shared lines, and the job names are what the required
