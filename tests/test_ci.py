@@ -23,10 +23,18 @@ And the licence every published image states. `docker/metadata-action`'s
 labels win over the `Dockerfile`'s `LABEL` lines, so the identifier on the
 image is the one `ci.yml` writes, and it has to agree with the `Dockerfile`'s.
 
-Like `test_ruleset.py` these read a file and start nothing, so they are part of
-the small half of the suite that needs no docker daemon.
+Every publication also reaches the GHCR mirror, and the two registries must
+never disagree about what a tag names: the build pushes both in one push,
+**Publish latest** moves `latest` on both, and a release copies each
+registry's version tags from its own `sha-` tag.
+
+Like `test_ruleset.py` these read a file, or run a step of it against a stubbed
+`docker`, and start no container, so they are part of the small half of the
+suite that needs no docker daemon.
 """
 
+import os
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -153,3 +161,126 @@ def test_the_published_image_states_its_licence():
     assert "org.opencontainers.image.licenses=AGPL-3.0-only" in labels, labels
     dockerfile = (REPO_ROOT / "Dockerfile").read_text()
     assert 'LABEL org.opencontainers.image.licenses="AGPL-3.0-only"' in dockerfile
+
+
+def job_step(job_key, name_start):
+    job = workflow()["jobs"][job_key]
+    steps = [s for s in job["steps"] if s.get("name", "").startswith(name_start)]
+    assert len(steps) == 1, f"{job_key} has {len(steps)} steps named {name_start!r}..."
+    return steps[0]
+
+
+def test_every_publication_reaches_both_registries():
+    """docker_meta names both images, so each tag the build pushes -- and the
+    version tags a release copies -- exists on Docker Hub and on the mirror,
+    under one digest. Docker Hub stays first: it is the name the verify jobs
+    pull.
+    """
+    meta = job_step("docker", "Docker meta")
+    images = [line.strip() for line in meta["with"]["images"].splitlines() if line.strip()]
+    assert images == [
+        "${{ steps.reponame.outputs.DOCKER_REPO }}",
+        "${{ steps.reponame.outputs.GHCR_REPO }}",
+    ], images
+
+
+def test_the_mirror_name_is_the_docker_hub_name_under_the_owner_lowercased(tmp_path):
+    """GHCR refuses capitals, and a repository owner may have them; the image
+    name is the Docker Hub one, so the two registries publish the same name.
+    """
+    step = job_step("docker", "Helper for custom repo name")
+    output = tmp_path / "output"
+    env = {**os.environ, "DOCKER_REPO": "tigerblue77/postfix_smtp_relay",
+           "OWNER": "TigerBlue77", "GITHUB_OUTPUT": str(output)}
+    subprocess.run(["bash", "-c", step["run"]], env=env, check=True, timeout=30)
+    assert output.read_text().splitlines() == [
+        "DOCKER_REPO=tigerblue77/postfix_smtp_relay",
+        "GHCR_REPO=ghcr.io/tigerblue77/postfix_smtp_relay",
+    ]
+
+
+def test_only_the_jobs_that_publish_may_write_packages():
+    """The mirror is pushed with the job's own token, so `packages: write` is
+    a publishing credential like the Docker Hub one: the build job and
+    **Publish latest** carry it, next to nothing they do not need, and no other
+    job does.
+    """
+    jobs = workflow()["jobs"]
+    assert jobs["docker"]["permissions"] == {"contents": "read", "packages": "write"}
+    assert jobs["promote"]["permissions"] == {"packages": "write"}
+    for key, job in jobs.items():
+        if key in ("docker", "promote"):
+            continue
+        assert job.get("permissions", {}).get("packages") != "write", (
+            f"{job['name']!r} can write packages"
+        )
+
+
+def test_latest_moves_on_the_mirror_first_then_on_docker_hub():
+    """If the mirror's write fails, neither `latest` has moved and the two
+    still agree; the other order would leave Docker Hub ahead with nothing
+    red to say so until the next merge.
+    """
+    run = job_step("promote", "Point latest")["run"]
+    mirror = run.find('"${GHCR_REPO}:latest"')
+    docker_hub = run.find('"${REPO}:latest"')
+    assert mirror != -1 and docker_hub != -1, run
+    assert mirror < docker_hub, "the mirror's latest has to be written first"
+
+
+DOCKER_STUB = """#!/bin/bash
+printf '%s\\n' "$*" >> "$DOCKER_CALL_LOG"
+if [ "$1 $2 $3" = "buildx imagetools inspect" ] ; then
+  case " $MISSING " in *" $4 "*) exit 1 ;; esac
+  exit 0
+fi
+[ "$1 $2 $3" = "buildx imagetools create" ] && exit 0
+echo "unexpected docker call: $*" >&2
+exit 64
+"""
+
+RELEASE_TAGS = "\n".join([
+    "hub/relay:2", "hub/relay:2.0", "hub/relay:2.0.0", "hub/relay:sha-abc1234",
+    "ghcr.io/o/relay:2", "ghcr.io/o/relay:2.0", "ghcr.io/o/relay:2.0.0",
+    "ghcr.io/o/relay:sha-abc1234",
+])
+
+
+def run_release(tmp_path, missing=""):
+    step = job_step("docker", "Publish the release tags")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker = bin_dir / "docker"
+    docker.write_text(DOCKER_STUB)
+    docker.chmod(0o755)
+    calls = tmp_path / "calls"
+    calls.touch()
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+           "DOCKER_CALL_LOG": str(calls), "MISSING": missing,
+           "TAGS": RELEASE_TAGS, "GITHUB_REF": "refs/tags/v2.0.0"}
+    result = subprocess.run(["bash", "-c", step["run"]], env=env,
+                            capture_output=True, text=True, timeout=30)
+    creates = [line for line in calls.read_text().splitlines() if "imagetools create" in line]
+    return result, creates
+
+
+def test_a_release_copies_each_registry_from_its_own_sha_tag(tmp_path):
+    """Run as written, against a stubbed `docker`: one copy per registry, each
+    onto its own three version tags and from its own `sha-` tag, never across.
+    """
+    result, creates = run_release(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert creates == [
+        "buildx imagetools create -t hub/relay:2 -t hub/relay:2.0 -t hub/relay:2.0.0 hub/relay:sha-abc1234",
+        "buildx imagetools create -t ghcr.io/o/relay:2 -t ghcr.io/o/relay:2.0 -t ghcr.io/o/relay:2.0.0 ghcr.io/o/relay:sha-abc1234",
+    ], creates
+
+
+def test_a_release_the_mirror_never_received_writes_nothing(tmp_path):
+    """A commit master built before the mirror existed has no `sha-` tag on
+    GHCR. The release has to stop before either registry is written, rather
+    than publish the version on Docker Hub alone.
+    """
+    result, creates = run_release(tmp_path, missing="ghcr.io/o/relay:sha-abc1234")
+    assert result.returncode != 0, result.stdout
+    assert creates == [], creates
