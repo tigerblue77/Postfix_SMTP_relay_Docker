@@ -751,7 +751,9 @@ the postfix master, because a relay that has lost OpenDKIM keeps accepting mail
 and sends it unsigned:
 
 - postfix is running and listening on every `inet` service in `master.cf`, so a
-  submission port added with a `POSTFIXMASTER_` variable is checked too;
+  submission port added with a `POSTFIXMASTER_` variable is checked too. A
+  `master.cf` postfix cannot read, or one with no `inet` service left in it,
+  is unhealthy rather than a list of no ports to check;
 - rsyslogd is running, otherwise mail is relayed without a trace;
 - OpenDKIM, PostSRSd and saslauthd are running when they were asked for. The
   check sees the container's environment, so a value given through a `_FILE`
