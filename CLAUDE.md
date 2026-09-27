@@ -610,11 +610,11 @@ Notes a contributor will hit:
   comments inside `run` and the workflows — and stops at the edge of the tree.
 - **Issues and pull requests are written in English, and one that is not is
   flagged.** Titles, bodies and comments alike. The rule holds in every
-  repository of this maintainer except the private ones of the
-  `Dragnix-Tigerblue77` organisation, where issues and pull requests are
-  written in French while code and commit messages stay in English; this one
-  is public and outside that organisation, so it holds here in full. An issue
-  or a pull request found breaking it is never let pass silently: the
+  repository of this maintainer but the private ones whose own instructions put
+  issues and pull requests in French — the private repositories of the
+  `Dragnix-Tigerblue77` organisation among them — where code and commit
+  messages still stay in English; this one is public, so it holds here in full.
+  An issue or a pull request found breaking it is never let pass silently: the
   maintainer is told, every time, with the link, and offered a translation,
   which is made once they agree and not before. (issues #47 and #49)
 - **A public repository never names a private one.** Not its name, not its
