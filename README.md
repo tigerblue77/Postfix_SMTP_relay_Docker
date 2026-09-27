@@ -71,9 +71,11 @@ Note that [SRS rewriting](#postsrsd-variables) is unavailable on `arm/v7`.
 <!-- QUICK START -->
 ## Quick start
 
-`docker pull tigerblue77/postfix_smtp_relay` or clone/build it yourself. It
-was published as `mwader/postfix-relay` until September 2026; see [Coming
-from `mwader/postfix-relay`](#coming-from-mwaderpostfix-relay).
+`docker pull tigerblue77/postfix_smtp_relay` or clone/build it yourself. The
+same image, same tags, is mirrored on GitHub's registry as
+`ghcr.io/tigerblue77/postfix_smtp_relay`, for when Docker Hub's pull limits get
+in the way. It was published as `mwader/postfix-relay` until September 2026;
+see [Coming from `mwader/postfix-relay`](#coming-from-mwaderpostfix-relay).
 
 You probably want to set `POSTFIX_myhostname` (the FQDN used by 220/HELO), see
 [Postfix variables](#postfix-variables).
@@ -969,7 +971,7 @@ releasing something no check has seen.
 | `test_upgrade.py` | Starting on the state the last released image wrote, which is what the "Upgrading" section promises |
 | `test_ruleset.py` | The ruleset recorded in `.github/rulesets/master.json`: its required status checks against the jobs that report them, its merge methods against the one the Dependabot auto-merge asks for, and that branches are kept up to date without being required to be: strict mode off, the updater running hourly, and leaving Dependabot's pull requests to Dependabot, which the updater's own step is run to show |
 | `test_lint.py` | That the ShellCheck gate names every shell script the tree tracks, and nothing that is not one |
-| `test_ci.py` | Which refs the build workflow publishes from — `master` and release tags, never a branch or a pull request — what it runs against the image it has just published, which is not the same on a merge and on a rebuild, and the licence that image states |
+| `test_ci.py` | Which refs the build workflow publishes from — `master` and release tags, never a branch or a pull request — what it runs against the image it has just published, which is not the same on a merge and on a rebuild, that every publication reaches the GHCR mirror too, `latest` and release tags included, and the licence that image states |
 | `test_scan.py` | What the daily image scan does with a finding: the rebuild it dispatches, the re-scan that says whether it worked, and the issue it then closes |
 | `test_claude_code_settings.py` | The commands a Claude Code session may run here without asking, and that the session-start hook stays registered |
 | `test_sign_off.py` | The sign-off every commit needs: which commits the gate refuses, and that the `git signoff` alias a session is given makes one it accepts; and what else the session-start hook tells a session, on the maintainer's copy and on a fork |

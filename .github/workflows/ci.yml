@@ -54,6 +54,13 @@ jobs:
     # one emulated architecture; this builds two and pushes them, and takes
     # about half a minute when the layer cache holds.
     timeout-minutes: 45
+    # What the token of this job may do, and nothing more: read the tree, and
+    # push the GHCR mirror. Pushing is still gated by the login steps below,
+    # which run on master and release tags only; on a pull request from a fork
+    # github hands out a read-only token whatever this says.
+    permissions:
+      contents: read
+      packages: write
     outputs:
       # What the jobs below pull and what "Publish latest" promotes. A digest
       # rather than a tag: it names this run's image and cannot be moved by
@@ -68,14 +75,20 @@ jobs:
       -
         name: Helper for custom repo name
         id: reponame
+        # GHCR_REPO is the mirror: the same image name under the repository
+        # owner's namespace on ghcr.io, lowercased because GHCR refuses capitals.
         run: |
           if [ "${DOCKER_REPO}" != "" ]; then
             echo "DOCKER_REPO=${DOCKER_REPO}" >> "${GITHUB_OUTPUT}"
           else
-            echo "DOCKER_REPO=${{ github.repository }}" >> "${GITHUB_OUTPUT}"
+            DOCKER_REPO="${{ github.repository }}"
+            echo "DOCKER_REPO=${DOCKER_REPO}" >> "${GITHUB_OUTPUT}"
           fi
+          name="${DOCKER_REPO##*/}"
+          echo "GHCR_REPO=ghcr.io/${OWNER,,}/${name,,}" >> "${GITHUB_OUTPUT}"
         env:
           DOCKER_REPO: "${{ secrets.DOCKER_REPO }}"
+          OWNER: "${{ github.repository_owner }}"
       -
         # No tag is derived from the ref. A branch builds but never publishes
         # (see "Build branch or test PR" below), and master publishes
@@ -83,11 +96,17 @@ jobs:
         # A ref tag turned every branch pushed here into a permanent Docker
         # Hub tag, master's own among them, and deleting the branch never
         # removed it.
+        #
+        # Two names, so every tag below is pushed to Docker Hub and to its
+        # GHCR mirror in the same push: one manifest, one digest, both
+        # registries. Docker Hub stays first, the name every job below pulls.
         name: Docker meta
         id: docker_meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ steps.reponame.outputs.DOCKER_REPO }} # list of Docker images to use as base name for tags
+          images: |
+            ${{ steps.reponame.outputs.DOCKER_REPO }}
+            ${{ steps.reponame.outputs.GHCR_REPO }}
           tags: |
             type=semver,pattern={{major}}
             type=semver,pattern={{major}}.{{minor}}
@@ -124,6 +143,17 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      -
+        # The mirror, on the same refs and for the same reasons. The job's own
+        # token is the credential, so there is no secret to set: "packages:
+        # write" above is what lets it push.
+        name: Login to GHCR
+        if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.actor != 'dependabot[bot]'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       -
         # Still master's own step, and still an unconditional push, whoever
         # the actor. A master run Dependabot itself started skips the login
@@ -193,38 +223,59 @@ jobs:
         # drift from what the master run pushed, and the inspect is what turns
         # a tag on a commit master never published into a red job rather than
         # a release built out of nothing.
+        #
+        # docker_meta gives each of the two names its own "sha-" tag and its
+        # own version tags, and each registry is copied from its own source:
+        # master pushed both in the same push, so both end on the digest that
+        # was verified. Every source is looked up before anything is written,
+        # so a commit master built before the mirror existed fails here rather
+        # than being released on Docker Hub alone.
         name: Publish the release tags
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -eu
-          source=
-          targets=()
+          declare -A sources=() targets=()
+          images=()
           while IFS= read -r tag ; do
+            [ -n "${tag}" ] || continue
+            image="${tag%:*}"
+            if [ -z "${sources[${image}]+set}" ] && [ -z "${targets[${image}]+set}" ] ; then
+              images+=("${image}")
+            fi
             case "${tag}" in
-              "")      continue ;;
-              *:sha-*) source="${tag}" ;;
-              *)       targets+=(-t "${tag}") ;;
+              *:sha-*) sources["${image}"]="${tag}" ;;
+              *)       targets["${image}"]+="${tag} " ;;
             esac
           done <<< "${TAGS}"
 
           # A tag that is not semver produces no version tag at all, only the
-          # "sha-" one that master already pushed. There is nothing to move.
+          # "sha-" ones that master already pushed. There is nothing to move.
           if [ ${#targets[@]} -eq 0 ] ; then
             echo "::notice::${GITHUB_REF} carries no version tag, nothing to publish"
             exit 0
           fi
-          if [ -z "${source}" ] ; then
-            echo "::error::docker_meta produced no sha- tag for ${GITHUB_REF}"
-            exit 1
-          fi
-          if ! docker buildx imagetools inspect "${source}" > /dev/null 2>&1 ; then
-            echo "::error::${source} is not in the registry, so this commit was" \
-                 "never built and verified on master. Tag a commit that was."
-            exit 1
-          fi
+          for image in "${images[@]}" ; do
+            source="${sources[${image}]:-}"
+            if [ -z "${source}" ] ; then
+              echo "::error::docker_meta produced no sha- tag for ${image}"
+              exit 1
+            fi
+            if ! docker buildx imagetools inspect "${source}" > /dev/null 2>&1 ; then
+              echo "::error::${source} is not in the registry, so this commit was" \
+                   "never built and verified on master. Tag a commit that was."
+              exit 1
+            fi
+          done
 
-          docker buildx imagetools create "${targets[@]}" "${source}"
-          echo "released ${source}"
+          for image in "${images[@]}" ; do
+            args=()
+            for target in ${targets[${image}]:-} ; do
+              args+=(-t "${target}")
+            done
+            [ ${#args[@]} -gt 0 ] || continue
+            docker buildx imagetools create "${args[@]}" "${sources[${image}]}"
+            echo "released ${sources[${image}]}"
+          done
         env:
           TAGS: "${{ steps.docker_meta.outputs.tags }}"
 
@@ -440,18 +491,28 @@ jobs:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Writing the mirror's latest is the one thing its token does; the check
+    # below reads a public remote and needs none.
+    permissions:
+      packages: write
     steps:
       -
         name: Helper for custom repo name
         id: reponame
+        # GHCR_REPO is the mirror: the same image name under the repository
+        # owner's namespace on ghcr.io, lowercased because GHCR refuses capitals.
         run: |
           if [ "${DOCKER_REPO}" != "" ]; then
             echo "DOCKER_REPO=${DOCKER_REPO}" >> "${GITHUB_OUTPUT}"
           else
-            echo "DOCKER_REPO=${{ github.repository }}" >> "${GITHUB_OUTPUT}"
+            DOCKER_REPO="${{ github.repository }}"
+            echo "DOCKER_REPO=${DOCKER_REPO}" >> "${GITHUB_OUTPUT}"
           fi
+          name="${DOCKER_REPO##*/}"
+          echo "GHCR_REPO=ghcr.io/${OWNER,,}/${name,,}" >> "${GITHUB_OUTPUT}"
         env:
           DOCKER_REPO: "${{ secrets.DOCKER_REPO }}"
+          OWNER: "${{ github.repository_owner }}"
       -
         name: Check this commit is still master's head
         id: head
@@ -505,6 +566,14 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       -
+        name: Login to GHCR
+        if: steps.head.outputs.head == github.sha
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      -
         name: Point latest at the image that was verified
         if: steps.head.outputs.head == github.sha
         # imagetools copies the manifest list rather than building or pushing
@@ -512,9 +581,17 @@ jobs:
         # architectures and the same provenance attestations under it. Verified
         # with "--dry-run" against the published image, which returned the index
         # entry for entry.
+        #
+        # Both registries, from the digest the build pushed to both, and the
+        # mirror first: if it fails, neither latest has moved and the two still
+        # agree. Only a failure between the two writes leaves them apart, and
+        # that is a red job rather than a silent one.
         run: |
+          set -eu
+          docker buildx imagetools create -t "${GHCR_REPO}:latest" "${GHCR_REPO}@${DIGEST}"
           docker buildx imagetools create -t "${REPO}:latest" "${REPO}@${DIGEST}"
           echo "latest -> ${DIGEST}"
         env:
           REPO: "${{ steps.reponame.outputs.DOCKER_REPO }}"
+          GHCR_REPO: "${{ steps.reponame.outputs.GHCR_REPO }}"
           DIGEST: "${{ needs.docker.outputs.digest }}"

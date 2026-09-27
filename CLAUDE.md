@@ -51,7 +51,7 @@ which is where contributor branches lived then.
 | `tests/fixtures/smtp.py` | `smtplib` client against the shared `postfix` relay's mapped port 25. Function-scoped on purpose: the tests about rejected mail leave the connection broken. |
 | `tests/test_*.py` | `capabilities`, `ci`, `claude_code_settings`, `client_tls`, `config`, `defaults`, `dkim`, `healthcheck`, `image`, `lifecycle`, `lint`, `logging`, `postmaster`, `qshape`, `ruleset`, `sasl`, `scan`, `secrets`, `sendmail`, `sign_off`, `smtp`, `srs`, `upgrade`. Each has a row in the README's per-file table. |
 | `tests/img/postfix-logo.png` | The inline image `tests/test_sendmail.py` attaches, and compares byte for byte on the way out. |
-| `.github/workflows/ci.yml` | `name: ci`. Four jobs. `docker`, displayed as **Build Image**: buildx over `linux/amd64,linux/arm/v7,linux/arm64/v8`, GHA build cache, a `docker_meta` that states `org.opencontainers.image.licenses=AGPL-3.0-only` itself because its labels win over the `Dockerfile`'s, nothing pushed from a branch or a pull request and no tag named after the ref (invariant 38), and on `master` the tag it pushes is docker_meta's `sha-<commit>` — never `latest`, and on a tag ref nothing at all: a release builds nothing and instead points the version tags at the `sha-<commit>` image `master` already published and verified. `verify_published_amd64` and `verify_published_arm64`, displayed as **Verify Published Image (amd64)** and **(arm64)**: `needs: docker`, `master` only, each pulls by digest the image that was just pushed and runs `pytest -m smoke` against it — or the *whole* suite when the run is a `no-cache` rebuild, which `test.yml` never sees (invariant 36); the amd64 one first asserts the published manifest lists the three platforms the build asks for. `promote`, displayed as **Publish latest**: `master` only, `needs` all three, and points `latest` at that digest with `imagetools create` — after checking the commit is still `master`'s head, since master runs are not cancelled and two of them would otherwise race to write the tag. Spelled out rather than a matrix, for the reason test.yml gives — the job name is what a required status check and the auto-merge workflow match on — and for one of its own: a matrix expands `${{ matrix.arch }}` only in the runs it starts, so a pull request, where the `if` skips the job whole, reported the raw expression as the check's name. The workflow also takes a `workflow_dispatch` with one boolean input, `no-cache`, wired into both build steps — the remediation lever for an **Image Scan** finding, and the three jobs above verify and tag what it republishes. |
+| `.github/workflows/ci.yml` | `name: ci`. Four jobs. `docker`, displayed as **Build Image**: buildx over `linux/amd64,linux/arm/v7,linux/arm64/v8`, GHA build cache, a `docker_meta` that states `org.opencontainers.image.licenses=AGPL-3.0-only` itself because its labels win over the `Dockerfile`'s, nothing pushed from a branch or a pull request and no tag named after the ref (invariant 38), and on `master` the tag it pushes is docker_meta's `sha-<commit>` — never `latest`, and on a tag ref nothing at all: a release builds nothing and instead points the version tags at the `sha-<commit>` image `master` already published and verified. Every tag goes to Docker Hub and to its mirror on GHCR, `ghcr.io/<owner>/<image>`, in the same push; the job's token carries `packages: write` for the mirror and `contents: read` besides, nothing else. `verify_published_amd64` and `verify_published_arm64`, displayed as **Verify Published Image (amd64)** and **(arm64)**: `needs: docker`, `master` only, each pulls by digest the image that was just pushed and runs `pytest -m smoke` against it — or the *whole* suite when the run is a `no-cache` rebuild, which `test.yml` never sees (invariant 36); the amd64 one first asserts the published manifest lists the three platforms the build asks for. `promote`, displayed as **Publish latest**: `master` only, `needs` all three, and points `latest` at that digest with `imagetools create`, on the mirror first and then on Docker Hub — after checking the commit is still `master`'s head, since master runs are not cancelled and two of them would otherwise race to write the tag. Spelled out rather than a matrix, for the reason test.yml gives — the job name is what a required status check and the auto-merge workflow match on — and for one of its own: a matrix expands `${{ matrix.arch }}` only in the runs it starts, so a pull request, where the `if` skips the job whole, reported the raw expression as the check's name. The workflow also takes a `workflow_dispatch` with one boolean input, `no-cache`, wired into both build steps — the remediation lever for an **Image Scan** finding, and the three jobs above verify and tag what it republishes. |
 | `.github/workflows/test.yml` | `name: test`. Four jobs: **Event File**, **Pytest**, **Pytest (arm64)** and **Pytest (arm/v7, emulated)**. Spelled out rather than written as a matrix; the file says why. |
 | `.github/workflows/test-results.yml` | On `workflow_run` of `test`, downloads the junit artifacts and publishes them as the **Test Results** check. |
 | `.github/workflows/lint.yml` | `name: lint`. Two jobs, each pinned and checksummed: `shellcheck`, displayed as **ShellCheck**, runs `shellcheck -S error` over `run`, `healthcheck`, the session-start hook and the sign-off check — the only threshold the image scripts pass; `ruff`, displayed as **Ruff**, runs `ruff check --no-cache --select F,B tests` — pyflakes and bugbear over all the python in the tree. The only two linters there are, and neither reads a config file. |
@@ -187,19 +187,19 @@ failure there means the same thing.
 
 Six modules run without a docker daemon: `test_ruleset.py`, which reads
 `.github/rulesets/master.json` and the workflows, `test_ci.py`, which reads
-`.github/workflows/ci.yml` and the `Dockerfile`, `test_scan.py`, which reads
+`.github/workflows/ci.yml` and the `Dockerfile` and runs two of its steps
+against a stubbed `docker`, `test_scan.py`, which reads
 `.github/workflows/scan.yml`, `test_lint.py`, which compares the scripts
 `.github/workflows/lint.yml` names with the ones git tracks,
 `test_claude_code_settings.py`, which reads `.claude/settings.json`, and
 `test_sign_off.py`, which builds throwaway git repositories and runs
 `.github/check_sign_off.sh` and the session-start hook against them. None of
-them starts a container. Everything else needs
-one. Most tests start a real relay; the exception is
-`test_image.py`, which starts none — it
-reads `docker inspect` output through `image_config`, asks a throwaway `sleep`
-container about the image's files through its `image_shell` fixture, and runs a
-command in one with `image_run`. When a test fails, `conftest.py` prints the
-logs of the containers it used, so `-o log_cli=true` is rarely what you want.
+them starts a container. Everything else needs one. Most tests start a real
+relay; the exception is `test_image.py`, which starts none — it reads `docker
+inspect` output through `image_config`, asks a throwaway `sleep` container
+about the image's files through its `image_shell` fixture, and runs a command
+in one with `image_run`. When a test fails, `conftest.py` prints the logs of
+the containers it used, so `-o log_cli=true` is rarely what you want.
 
 ### Build
 
@@ -325,7 +325,7 @@ display `name:`, so on an ordinary pull request it appears as a skipped
 
 | Check | From | What it does |
 | --- | --- | --- |
-| **Build Image** | `ci.yml` | buildx over `linux/amd64,linux/arm/v7,linux/arm64/v8`. Nothing is pushed on a PR, nor from any branch: the DockerHub login runs only on `master` and release tags, and the build step for everything else carries a literal `push: false` (invariant 38). But the build has to succeed on **all three** architectures. This is the gate that catches architecture-specific packaging problems. |
+| **Build Image** | `ci.yml` | buildx over `linux/amd64,linux/arm/v7,linux/arm64/v8`. Nothing is pushed on a PR, nor from any branch: the two registry logins, Docker Hub's and the GHCR mirror's, run only on `master` and release tags, and the build step for everything else carries a literal `push: false` (invariant 38). But the build has to succeed on **all three** architectures. This is the gate that catches architecture-specific packaging problems. |
 | **Pytest** | `test.yml` | `ubuntu-latest`, Python 3.13, `pip install -r tests/requirements.txt`, `pytest --junitxml=junit/test-results.xml`. |
 | **Pytest (arm64)** | `test.yml` | The same, natively, on `ubuntu-24.04-arm`. |
 | **Pytest (arm/v7, emulated)** | `test.yml` | Pins the QEMU binfmt image, builds `linux/arm/v7` and runs `pytest -m smoke -n0` against it — four tests, and the only ones that ever start the image whose packaging differs. It ran on `master` and behind a `test-emulated` label until wader/postfix-relay#273; the label is gone, and 42-152s against 174-275s for either native job is why it can be on the path a pull request waits on without lengthening it. |
@@ -360,17 +360,19 @@ the manifest list matching its own runner, so a missing or mislabelled entry
 would leave both green while the architecture that lost it fails to pull at all
 — that step reads the list itself. (issue wader/postfix-relay#284)
 
-A release tag reaches the same digest by a shorter road: it builds nothing.
-The commit a tag names has been on `master` first in every release this
-repository has cut, so its image is already in the registry under
-`sha-<commit>`, already pulled back and smoke-tested; **Build Image**'s last
-step copies that manifest onto the version tags with `imagetools`, the way
-**Publish latest** copies it onto `latest`. Rebuilding was the defect: the
-`Dockerfile` pins the Debian base by date but the `apt install` under it is
-unversioned, so a tag cut weeks after the merge resolved a package set no
-check had ever started, and none of the three jobs above look at a tag ref.
-The copy also refuses a tag on a commit `master` never published, which is
-the one thing nothing checked before.
+A release tag reaches the same digest by a shorter road: it builds nothing. The
+commit a tag names has been on `master` first in every release this repository
+has cut, so its image is already in the registry under `sha-<commit>`, already
+pulled back and smoke-tested; **Build Image**'s last step copies that manifest
+onto the version tags with `imagetools`, the way **Publish latest** copies it
+onto `latest`. Rebuilding was the defect: the `Dockerfile` pins the Debian base
+by date but the `apt install` under it is unversioned, so a tag cut weeks after
+the merge resolved a package set no check had ever started, and none of the
+three jobs above look at a tag ref. The copy also refuses a tag on a commit
+`master` never published, which is the one thing nothing checked before; since
+the GHCR mirror it looks every source up on both registries before it writes
+either, so a commit built before the mirror existed is refused rather than
+released on Docker Hub alone.
 
 **Image Scan** does not run on a pull request either, and for a reason of its
 own rather than a scheduling one: `scan.yml` carries no `pull_request` trigger
@@ -1342,22 +1344,22 @@ changing any of them.
     something this image needed. (issue wader/postfix-relay#376)
 
 
-38. **A branch builds on all three architectures and publishes nothing, and
-    no tag is named after the ref.** `ci.yml` used to push every build that
-    was neither `master`'s, a pull request's nor Dependabot's, tagged by
+38. **A branch builds on all three architectures and publishes nothing, and no
+    tag is named after the ref.** `ci.yml` used to push every build that was
+    neither `master`'s, a pull request's nor Dependabot's, tagged by
     `type=ref,event=branch` with the branch name. A branch pushed to a fork
     published nothing, the secrets being absent there; every branch pushed to
-    this repository itself became a permanent `<image>:<branch>` tag on
-    Docker Hub that deleting the branch did not remove. That is one tag per
-    merged branch of the repository's own namespace — `trixie` and a
-    never-merged `bookworm` among them, names that read as supported
-    distribution variants — and the first session branch pushed after this
-    repository's Docker Hub secrets were set got as far as the push step
-    before its run was cancelled by hand.
-    The build step for branches and pull requests now carries a literal
-    `push: false` rather than an expression, the registry login is taken only
-    on `master` and release tags, so a run that cannot publish never holds the
-    credentials either, and `docker_meta` derives nothing from the ref, which
-    also drops the `:master` tag master's own build used to push next to
-    `sha-<commit>`. `tests/test_ci.py` pins all three. (issue #20,
-    carried over from wader/postfix-relay#356)
+    this repository itself became a permanent `<image>:<branch>` tag on Docker
+    Hub that deleting the branch did not remove. That is one tag per merged
+    branch of the repository's own namespace — `trixie` and a never-merged
+    `bookworm` among them, names that read as supported distribution variants —
+    and the first session branch pushed after this repository's Docker Hub
+    secrets were set got as far as the push step before its run was cancelled
+    by hand. The build step for branches and pull requests now carries a
+    literal `push: false` rather than an expression, the registry logins,
+    Docker Hub's and the GHCR mirror's, are taken only on `master` and release
+    tags, so a run that cannot publish never holds the credentials either, and
+    `docker_meta` derives nothing from the ref, which also drops the `:master`
+    tag master's own build used to push next to `sha-<commit>`.
+    `tests/test_ci.py` pins all three. (issue #20, carried over from
+    wader/postfix-relay#356)
