@@ -971,6 +971,7 @@ releasing something no check has seen.
 | `test_lint.py` | That the ShellCheck gate names every shell script the tree tracks, and nothing that is not one |
 | `test_ci.py` | Which refs the build workflow publishes from — `master` and release tags, never a branch or a pull request — what it runs against the image it has just published, which is not the same on a merge and on a rebuild, and the licence that image states |
 | `test_scan.py` | What the daily image scan does with a finding: the rebuild it dispatches, the re-scan that says whether it worked, and the issue it then closes |
+| `test_claude_code_settings.py` | The commands a Claude Code session may run here without asking, and that the session-start hook stays registered |
 | `test_sign_off.py` | The sign-off every commit needs: which commits the gate refuses, and that the `git signoff` alias a session is given makes one it accepts; and what else the session-start hook tells a session, on the maintainer's copy and on a fork |
 
 Use the `postfix` fixture for a relay with the default configuration,
