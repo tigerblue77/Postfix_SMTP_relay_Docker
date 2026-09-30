@@ -621,16 +621,19 @@ Notes a contributor will hit:
   attribution instructions give, so that the maintainer can go from any
   issue, pull request or comment straight to the conversation that produced
   it — the only place the reasoning that never reached the text still lives.
-  The wording is the maintainer's, "supervised by" and not "reviewed by", and
-  their instructions outrank whatever footer a session would otherwise add;
-  this rule is those instructions written down instead of left to be given
-  again. It is one fixed formula in every repository, whatever the language
-  of the text above it — English here, French in the private repositories
-  whose own instructions say so — because it is a signature and not prose. A
-  commit message is not covered: a commit is authored under the session's
-  identity and signed off by the maintainer, as *Sign-off* above says. Shared
-  with every repository of the maintainer that carries agent instructions,
-  and written out in full in each.
+  The tooling appends a footer of its own to some posts, a pull request for
+  one, and only the signature stays: once the post exists, its body is edited
+  so that the signature is the last thing in it, since two lines saying the
+  same thing are noise and only this one carries the maintainer's name. An
+  issue opened without a signature is the case this rule exists for: nothing
+  then links it to its conversation. The wording is the maintainer's,
+  "supervised by" and not "reviewed by", and it is one fixed formula in every
+  repository, whatever the language of the text above it — English here,
+  French in the private repositories whose own instructions say so — because
+  it is a signature and not prose. A commit message is not covered: a commit
+  is authored under the session's identity and signed off by the maintainer,
+  as *Sign-off* above says. Shared with every repository of the maintainer
+  that carries agent instructions, and written out in full in each.
 - **Issues and pull requests are written in English, and one that is not is
   flagged.** Titles, bodies and comments alike. The rule holds in every
   repository of this maintainer but the private ones whose own instructions put
