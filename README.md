@@ -161,6 +161,13 @@ will produce
 postconf -Me submission/inet="submission inet n - y - - smtpd"
 ```
 
+The part after `POSTFIXMASTER_` has to be a valid variable name once `__`
+stands for `/`: letters, digits and `_` only. So a service named by an address,
+such as `127.0.0.1:10025/inet` — the usual shape for a content filter's
+reinjection port — cannot be set this way: `.` and `:` cannot appear in a
+variable name, the variable is never seen, and nothing reports it. Mount your
+own `/etc/postfix/master.cf` for such a service instead.
+
 ### Postfix lookup tables
 
 You can also create multiline [tables](http://www.postfix.org/DATABASE_README.html#types) using `POSTMAP_<filename>` like this example:
@@ -600,8 +607,12 @@ a relay is for.
 Note that declaring a volume is not by itself enough to preserve anything.
 Without an explicit mount docker creates an *anonymous* volume: `docker compose
 up` carries it over when it recreates a container, but a plain `docker rm` and
-`docker run` replaces it with an empty one. To keep the queue and the keys
-across container replacement, mount them yourself:
+`docker run` replaces it with an empty one, and so does `docker compose down`
+followed by `up`: `down` removes the container the volume was carried over
+from, so the next `up` creates a fresh, empty one, and the old volume — queued
+mail and DKIM keys included — is left on disk attached to nothing. (`docker
+compose down -v` deletes it instead.) To keep the queue and the keys across
+container replacement, mount them yourself:
 
 ```
 volumes:
