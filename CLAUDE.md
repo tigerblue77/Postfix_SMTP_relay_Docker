@@ -34,7 +34,7 @@ which is where contributor branches lived then.
 | --- | --- |
 | `Dockerfile` | Debian base pin (`FROM debian:trixie-<date>-slim`), `apt-get full-upgrade` before the named packages and `apt-get autoremove --purge` after them (invariant 37), the conditional `postsrsd` install, the build-time deletion of `/etc/rsyslog.conf` and `/etc/postsrsd.secret`, the default `ENV` block, `COPY run healthcheck /root/` and then `COPY LICENSE NOTICE LICENSE-COMMERCIAL.md /root/`, the OCI `LABEL`s including `org.opencontainers.image.licenses=AGPL-3.0-only` (which `ci.yml` has to repeat, see its row), `VOLUME`, `EXPOSE 25`, `HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["/root/healthcheck"]` and `CMD ["/root/run"]`. No `ENTRYPOINT`, no `ARG`. |
 | `run` | The entrypoint. Resolves `<NAME>_FILE` secrets, turns `POSTFIX_*`, `POSTFIXMASTER_*`, `POSTMAP_*`, `OPENDKIM_*`, `POSTSRSD_*`, `RSYSLOG_*`, `SASL_Passwds` and `POSTMASTER_ADDRESS` into config, starts the daemons, asks postfix for an SMTP greeting, then runs a `pgrep`-polling supervision loop. Nearly all behaviour lives here. |
-| `healthcheck` | `pgrep`s `master`, checks a listening socket for every `inet` service in `postconf -M`, then `rsyslogd` always, `opendkim`/`postsrsd` whenever the environment *or the artefacts start-up left behind* say so, and `saslauthd` when `SASL_Passwds` is set. |
+| `healthcheck` | `pgrep`s `master`, checks a listening socket for every `inet` service in `postconf -M` — and fails when `postconf -M` does, or lists none — then `rsyslogd` always, `opendkim`/`postsrsd` whenever the environment *or the artefacts start-up left behind* say so, and `saslauthd` when `SASL_Passwds` is set. |
 | `pytest.ini` | `addopts = -n auto --dist loadfile --maxprocesses 4` and one registered marker, `smoke`. No `testpaths`, no `filterwarnings`, no `xfail_strict`. |
 | `.dockerignore` | Keeps `.git`, `README.md`, `SECURITY.md`, `tests`, `pytest.ini`, `CLAUDE.md` and `.claude` out of the build context. Not `LICENSE`: the image has to carry it, so it has to reach the context. |
 | `.claude/settings.json` | Registers the `SessionStart` hook below, and pre-approves three commands, so a session runs them without stopping to ask: `pytest` and `ruff check --no-cache --select F,B tests` **exactly**, and `shellcheck` with any arguments. The first two carry no `:*` on purpose — a prefix rule pre-approves every argument list, and both have options that write where they are pointed. `git`, `docker` and `gh` were deliberately left out. The list is a standing grant to every session opened here, so adding to it is a decision to argue, not a line to append: `tests/test_claude_code_settings.py` holds it whole, and its docstring is where the argument goes. |
@@ -718,8 +718,9 @@ Each of these looks like an oversight and is not. Read the linked commit before
 changing any of them.
 
 1. **`/var/mail` is deliberately not chowned.** `run` chowns `/var/lib/postfix`
-   and `/var/spool/postfix` to `postfix`, and pointedly not `/var/mail` next to
-   them. Adding it back breaks local delivery after the first restart:
+   to `postfix` and has `postfix set-permissions` do the same for
+   `/var/spool/postfix` (39), and pointedly not `/var/mail` next to them.
+   Adding it back breaks local delivery after the first restart:
    `local(8)` enforces `strict_mailbox_ownership` and refuses a mailbox not
    owned by the recipient. `local(8)` runs privileged and assumes the
    recipient's uid/gid itself, and `/var/mail` is already `root:mail 2775`
@@ -742,10 +743,10 @@ changing any of them.
    `POSTSRSD_SRS_DOMAIN` on an image built without it exits 1 rather than
    relaying without the rewriting that was asked for — and in `healthcheck`,
    which fails once `postsrsd` was configured but is no longer running. All
-   three move together. The refusal also has to stay *above* the postfix start:
-   a container that came up first and died second would have relayed the
-   unrewritten mail, and `tests/test_srs.py` asserts the log is empty at the
-   point it exits. (`Closes wader/postfix-relay#119`, commit `9755f7d`)
+   three move together. The refusal also has to stay *above* every daemon,
+   rsyslogd included: a container that came up first and died second would
+   have relayed the unrewritten mail, and `tests/test_srs.py` asserts the log
+   is empty at the point it exits. (`Closes wader/postfix-relay#119`, commit `9755f7d`)
 
 4. **The `Dockerfile` deletes `/etc/postsrsd.secret` at build time**, and `run`
    generates a random one when the file is missing *or empty* (`[ ! -s ]`, so a
@@ -861,7 +862,8 @@ changing any of them.
 
 10. **The saslauthd mux directory is created with
     `install -d -o root -g sasl -m 710`, below the
-    `chown -R postfix:postfix /var/spool/postfix`.** saslauthd makes its own mux
+    `postfix set-permissions` that decides the queue's ownership (39).**
+    saslauthd makes its own mux
     world-writable, so the directory holding it is the access control.
     `dpkg-statoverride` only records what a *future* dpkg unpack should apply —
     nothing a container ever runs — so the mode never reached the directory at
@@ -1408,3 +1410,54 @@ changing any of them.
     tag master's own build used to push next to `sha-<commit>`.
     `tests/test_ci.py` pins all three. (issue #20, carried over from
     wader/postfix-relay#356)
+
+39. **`run` hands the queue to postfix with `postfix set-permissions`, and only
+    `/var/lib/postfix` with `chown -R`.** The recursive chown it replaced gave
+    all of `/var/spool/postfix` to `postfix:postfix`, which is wrong for the
+    directory itself, for `pid/` and for the chroot copies under `etc/` and
+    `usr/` (all root's), and for the group of `public/` and `maildrop/`
+    (`postdrop`). The first start hid it, because the queue directories did not
+    exist yet and postfix created them right; every restart after it printed
+    `postfix check` warnings "not owned by root" and "not owned by group
+    postdrop" -- measured on the built image, one on the first start and twelve
+    after a restart, in a log nobody reads until something else is wrong.
+    `postfix set-permissions` sets all of it back from `postfix-files`, creates
+    a queue directory that is missing and re-runs Debian's chroot set-up, and
+    it repairs a queue restored as root, which the chown was there for. Three
+    things about the line look wrong and are not. Its output goes through
+    `grep -v '/usr/share/man/'` because the slim base image ships no manual
+    pages and `post-install` ends the run, `|| exit 1` on every entry, with one
+    chown error at the first of them; that is not a half-done run, because the
+    queue is entries 4 to 17 of 155 in `postfix-files` and the manual pages are
+    the last. It is slower than the chown -- 0.3 s against about 1 s for
+    100,000 queue files on a local disk -- and that is the whole of what issue
+    #10 (wader/postfix-relay#344) reports for a large queue on a slow mount. It
+    was left as it is on purpose: the cost shows only with a backlog of hundreds
+    of thousands of messages on a network or Docker Desktop mount, and the
+    queue is now owned the way postfix checks for. And the capabilities the
+    README documents are enough for it: it needs `CHOWN` and `FOWNER`, both in
+    the set. A one-line `chown root /var/spool/postfix` after the recursive
+    chown was tried first and fixes one warning of twelve; putting the chown
+    back brings the rest back. Two tests in `tests/test_lifecycle.py` pin it:
+    the ownership across a restart, and a queue left to root being handed back
+    to postfix. (issue #10)
+
+40. **`rsyslogd` is started before every other daemon, and after the two things
+    that must precede it.** Until it is up there is no `/dev/log`, and
+    `syslog(3)` does not fail when nothing listens on one: what a daemon writes
+    while starting is dropped without an error. With rsyslogd last, that was
+    master's own `daemon started` line, `postfix-script`'s output and the reason
+    opendkim gives for refusing a socket, so the container log began at the last
+    daemon to start and a container that did not come up left a generic
+    sentence from `run` as all there was to read. The block sits straight after
+    the `trap`, so that `$rsyslogPid` exists before `stopDaemons` can run, and
+    it keeps two things above it. The `postsrsd` refusal (3) comes first, so a
+    container that refuses to start has a log that says nothing of a start that
+    never happened. And the queue's ownership (39) is set before it, because
+    the socket rsyslogd opens for the chrooted daemons lives under the queue:
+    rsyslogd is a daemon that writes there, and ownership is the last thing
+    that should be decided while it does. The greeting check stays where it is,
+    after postfix: the comment on it that says it follows rsyslogd is still
+    true, and is now true of everything else too. The `Skipping
+    /etc/rsyslog.conf generating` line therefore comes first in the log of a
+    restarted container, which `tests/test_logging.py` splits on. (issue #11)

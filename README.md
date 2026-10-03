@@ -150,7 +150,7 @@ only image on another.
 
 ### Postfix master.cf variables
 
-You can modify master.cf using postconf with `POSTFIXMASTER_` variables. All double `__` symbols will be replaced with `/`. For example
+You can modify master.cf using postconf with `POSTFIXMASTER_` variables. All double `__` symbols will be replaced with `/`. An entry postconf refuses, such as one with fewer than the eight fields a service needs, stops the container with postconf's reason rather than starting without that service. For example
 
 ```
 - POSTFIXMASTER_submission__inet=submission inet n - y - - smtpd
@@ -246,6 +246,20 @@ including its brackets and port:
 OpenDKIM [configuration options](http://opendkim.org/opendkim.conf.5.html) can be set
 using `OPENDKIM_<name>` environment variables. See [Dockerfile](Dockerfile) for default
 configuration. For example `OPENDKIM_Canonicalization=relaxed/simple`.
+
+Two of those defaults decide what gets signed:
+
+- `OPENDKIM_InternalHosts=0.0.0.0/0, ::/0` makes every host internal, and
+  opendkim signs mail from internal hosts. That is what gets mail from the other
+  containers signed at all: they reach the relay over a docker network, and
+  opendkim's own default, `127.0.0.1`, would leave all of it unsigned.
+  Narrowing it turns signing off for the hosts it leaves out. It is not who may
+  relay, which is `POSTFIX_mynetworks`: the two are separate perimeters.
+- `OPENDKIM_Mode=s` signs and verifies nothing. opendkim verifies only mail from
+  hosts that are not internal, and with every host internal there are none, so
+  `sv` would claim a verification that never happens. Set `OPENDKIM_Mode=sv`
+  together with a narrower `OPENDKIM_InternalHosts` if the relay should check
+  the signatures of mail arriving from outside it.
 
 Enabling signing itself is described in [DKIM](#dkim).
 
@@ -348,6 +362,10 @@ environment:
   # Whatever your docker network actually is
   - POSTFIX_mynetworks=127.0.0.0/8,172.16.0.0/12
 ```
+
+That narrows who may relay, not whose mail gets signed: DKIM signs whatever
+`OPENDKIM_InternalHosts` covers, which is every host unless you narrow it too
+(see [OpenDKIM variables](#opendkim-variables)).
 
 Addresses are not something to rely on under swarm. `docker stack deploy`
 publishes a port through the routing mesh, which source-NATs, so postfix sees
@@ -575,6 +593,39 @@ It is printed and not written back, so nothing lands in your volume that you
 did not put there. The rebuild is for RSA keys; an ed25519 key carries its
 public half differently, and the log says so rather than guessing.
 
+#### Changing the selector
+
+Editing the selector in `OPENDKIM_DOMAINS` and restarting generates the new key
+at that start and signs with it at once, before anyone can have published its
+record. A verifier that cannot find the record counts the signature as failed,
+not as missing, so while DNS catches up that mail passes DMARC only if SPF
+does. A domain signs with one selector at a time, so the old key stops being
+used at the same moment.
+
+Generate the next key ahead of time instead, while the current one goes on
+signing. For a new selector `mail2026` on `domain.tld`:
+
+1. Generate the key. Nothing uses it until `OPENDKIM_DOMAINS` names its
+   selector.
+   ```
+   docker exec <container> opendkim-genkey -D /etc/opendkim/keys/domain.tld \
+     --selector=mail2026 --domain=domain.tld --append-domain
+   ```
+2. Publish the record it wrote, which
+   `docker exec <container> cat /etc/opendkim/keys/domain.tld/mail2026.txt`
+   prints, and wait until it resolves.
+3. Set `OPENDKIM_DOMAINS=domain.tld=mail2026` and recreate the container. The
+   key is already there, so it is used as it is rather than regenerated.
+4. Keep the old record published for a few more days: mail signed with the old
+   key may still be queued, here or further along, and is verified when it is
+   delivered. Postfix retries for five days by default. Then remove the record,
+   and delete `mail.private` and `mail.txt`.
+
+Step 3 needs the key from step 1 to survive the container being recreated, so
+mount `/etc/opendkim/keys` as [Volumes](#volumes) describes. Without that, a
+`docker rm` and `docker run` loses it and generates yet another key, whose
+record nobody has published.
+
 Other OpenDKIM options are set with the `OPENDKIM_<name>` variables described in
 [OpenDKIM variables](#opendkim-variables).
 
@@ -625,7 +676,10 @@ This image was published as `mwader/postfix-relay` until September 2026, from
 [wader/postfix-relay](https://github.com/wader/postfix-relay), which this
 repository started as a fork of and whose whole history it carries. Moving is
 an ordinary upgrade with a new name: change the `image:` line, keep the same
-variables and the same volumes. The upgrade tests start from the last
+variables and the same volumes. One default differs: `OPENDKIM_Mode` is `s`
+rather than `sv`. With the shipped `OPENDKIM_InternalHosts` the `v` never
+verified anything, so nothing changes unless you narrowed that yourself to have
+the rest verified, in which case set `OPENDKIM_Mode=sv`. The upgrade tests start from the last
 `mwader/postfix-relay` release for exactly that reason (see
 [Testing](#testing)).
 
@@ -779,7 +833,9 @@ the postfix master, because a relay that has lost OpenDKIM keeps accepting mail
 and sends it unsigned:
 
 - postfix is running and listening on every `inet` service in `master.cf`, so a
-  submission port added with a `POSTFIXMASTER_` variable is checked too;
+  submission port added with a `POSTFIXMASTER_` variable is checked too. A
+  `master.cf` postfix cannot read, or one with no `inet` service left in it,
+  is unhealthy rather than a list of no ports to check;
 - rsyslogd is running, otherwise mail is relayed without a trace;
 - OpenDKIM, PostSRSd and saslauthd are running when they were asked for. The
   check sees the container's environment, so a value given through a `_FILE`
