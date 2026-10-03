@@ -247,6 +247,20 @@ OpenDKIM [configuration options](http://opendkim.org/opendkim.conf.5.html) can b
 using `OPENDKIM_<name>` environment variables. See [Dockerfile](Dockerfile) for default
 configuration. For example `OPENDKIM_Canonicalization=relaxed/simple`.
 
+Two of those defaults decide what gets signed:
+
+- `OPENDKIM_InternalHosts=0.0.0.0/0, ::/0` makes every host internal, and
+  opendkim signs mail from internal hosts. That is what gets mail from the other
+  containers signed at all: they reach the relay over a docker network, and
+  opendkim's own default, `127.0.0.1`, would leave all of it unsigned.
+  Narrowing it turns signing off for the hosts it leaves out. It is not who may
+  relay, which is `POSTFIX_mynetworks`: the two are separate perimeters.
+- `OPENDKIM_Mode=s` signs and verifies nothing. opendkim verifies only mail from
+  hosts that are not internal, and with every host internal there are none, so
+  `sv` would claim a verification that never happens. Set `OPENDKIM_Mode=sv`
+  together with a narrower `OPENDKIM_InternalHosts` if the relay should check
+  the signatures of mail arriving from outside it.
+
 Enabling signing itself is described in [DKIM](#dkim).
 
 ### PostSRSd variables
@@ -348,6 +362,10 @@ environment:
   # Whatever your docker network actually is
   - POSTFIX_mynetworks=127.0.0.0/8,172.16.0.0/12
 ```
+
+That narrows who may relay, not whose mail gets signed: DKIM signs whatever
+`OPENDKIM_InternalHosts` covers, which is every host unless you narrow it too
+(see [OpenDKIM variables](#opendkim-variables)).
 
 Addresses are not something to rely on under swarm. `docker stack deploy`
 publishes a port through the routing mesh, which source-NATs, so postfix sees
@@ -625,7 +643,10 @@ This image was published as `mwader/postfix-relay` until September 2026, from
 [wader/postfix-relay](https://github.com/wader/postfix-relay), which this
 repository started as a fork of and whose whole history it carries. Moving is
 an ordinary upgrade with a new name: change the `image:` line, keep the same
-variables and the same volumes. The upgrade tests start from the last
+variables and the same volumes. One default differs: `OPENDKIM_Mode` is `s`
+rather than `sv`. With the shipped `OPENDKIM_InternalHosts` the `v` never
+verified anything, so nothing changes unless you narrowed that yourself to have
+the rest verified, in which case set `OPENDKIM_Mode=sv`. The upgrade tests start from the last
 `mwader/postfix-relay` release for exactly that reason (see
 [Testing](#testing)).
 

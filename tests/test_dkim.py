@@ -14,7 +14,8 @@ import pytest
 
 from tests.helpers import (container_exec, container_log, container_stderr,
                            dkim_dns_record, exit_code_within, image_run,
-                           listening_sockets, postconf, restart, send, verifies)
+                           listening_sockets, postconf, restart, send, send_raw,
+                           verifies)
 
 KEY_PATH = '/etc/opendkim/keys/example.com/sel1.private'
 
@@ -207,6 +208,26 @@ def test_milter_settings_are_left_alone_when_set_explicitly(postfix_factory):
 
     assert postconf(relay, 'milter_default_action') == 'tempfail'
     assert postconf(relay, 'smtpd_milters') == 'inet:localhost:12301, inet:localhost:12302'
+
+
+def test_the_relay_signs_and_does_not_verify(postfix_factory, mailpit):
+    """Every host is internal (OPENDKIM_InternalHosts), and opendkim verifies
+    only mail from hosts that are not, so this relay never verifies anything.
+    The mode says so rather than shipping "sv" and claiming a check that
+    never ran: a signature arriving with a message, broken or not, goes
+    through unremarked.
+    """
+    relay = postfix_factory(env={'OPENDKIM_DOMAINS': 'example.org'})
+    assert 'Mode s\n' in container_exec(relay, ['cat', '/etc/opendkim.conf'])
+
+    send_raw(relay, "DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=sel1;\r\n"
+                    " h=from; bh=AAAA; b=AAAA\r\n"
+                    "Subject: arrives signed\r\nFrom: sender@example.com\r\n"
+                    "To: receiver@example.com\r\n\r\nbody\r\n")
+
+    headers = mailpit.wait_for_message('arrives signed')['headers']
+    assert 'dkim-signature' in headers
+    assert 'authentication-results' not in headers
 
 
 SIGNING = {'OPENDKIM_DOMAINS': 'example.com=sel1'}
