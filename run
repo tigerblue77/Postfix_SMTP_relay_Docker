@@ -610,20 +610,30 @@ while [ -z "$stopping" ] ; do
   # by a trapped signal, while a foreground "sleep" would postpone the stop by
   # a whole interval. "-n" returns on whichever finishes first, so rsyslogd --
   # the one daemon that is still a job of this shell -- is noticed the moment
-  # it dies rather than at the end of the interval.
+  # it dies rather than at the end of the interval. The two are named rather
+  # than left to "any job": saslauthd's starter is a job too, one that exits
+  # during start-up, and a bare "wait -n" returned on it at once and left this
+  # loop one sleep ahead of itself for the life of the container, polling
+  # twice per interval (issue #15).
   sleep 2 &
-  wait -n
+  wait -n "$!" "$rsyslogPid"
   [ -n "$stopping" ] && break
 
   for daemon in $supervised ; do
     pgrep -x "$daemon" > /dev/null && continue
 
     # A daemon takes a moment to actually go away, and a relay that is fine is
-    # not worth stopping over a single missed reading.
+    # not worth stopping over a single missed reading. The miss is said all
+    # the same: a near miss is worth seeing in the log, and without the line
+    # this second reading could be deleted with nothing noticing (issue #23).
     sleep 1 &
     wait $!
     [ -n "$stopping" ] && break 2
-    pgrep -x "$daemon" > /dev/null && continue
+    if pgrep -x "$daemon" > /dev/null ; then
+      echo "$daemon was missing from one reading of the supervision loop and" \
+           "back at the next, so the relay carries on." >&2
+      continue
+    fi
 
     # Exiting 0 would look like a clean stop and leave an on-failure restart
     # policy with nothing to act on.

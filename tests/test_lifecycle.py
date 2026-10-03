@@ -61,6 +61,75 @@ def test_relaying_still_works_after_an_unclean_stop(postfix_factory, mailpit):
     assert mailpit.wait_for_message('after the kill')
 
 
+def test_the_supervision_loop_wakes_once_per_interval(postfix_factory):
+    """With saslauthd started, the loop used to poll twice per interval.
+
+    saslauthd's starter is a job of "run" that exits during start-up, and a
+    bare "wait -n" returned on it at once, leaving the loop one sleep ahead of
+    itself for good: two of its two-second sleeps in flight at a time, so
+    about ten in ten seconds instead of five. It now waits on its own sleep
+    and on rsyslogd by name (issue #15). Counted as the distinct "sleep 2"
+    processes pid 1 starts over ten seconds, sampled five times a second.
+    """
+    relay = postfix_factory(env={'SASL_Passwds': '/etc/postfix/sasl/sasl_passwds'})
+    poll_until(lambda: relay.exec(["pgrep", "-P", "1", "-fx", "sleep 2"]).exit_code == 0,
+               description='"run" to reach its supervision loop')
+
+    sleeps = container_exec(relay, [
+        "sh", "-c",
+        'for i in $(seq 1 50) ; do pgrep -P 1 -fx "sleep 2" ; sleep 0.2 ; done | sort -u'])
+
+    assert len(sleeps.split()) <= 6, sleeps.split()
+
+
+# Takes saslauthd away across one reading of the supervision loop and gives it
+# back before the next. The loop sleeps two seconds, reads every daemon, and
+# reads a missing one again a second later; so, timed from the moment a new
+# "sleep 2" appears, saslauthd is killed at 1.5s and started again at 2.4s,
+# which puts the first reading (just after 2s) inside the gap and the second
+# (just after 3s) outside it.
+NEAR_MISS = """
+old=$(pgrep -P 1 -fx 'sleep 2')
+while :; do
+  new=$(pgrep -P 1 -fx 'sleep 2')
+  [ -n "$new" ] && [ "$new" != "$old" ] && break
+  sleep 0.02
+done
+sleep 1.5
+pkill -x saslauthd
+sleep 0.9
+saslauthd -c -r -a pam -m /var/spool/postfix/var/run/saslauthd
+"""
+
+
+def test_a_daemon_missing_from_one_reading_only_is_said_and_forgiven(postfix_factory):
+    """The supervision loop reads a missing daemon twice before stopping the
+    relay, so a daemon caught between two states is not fatal. The second
+    reading used to be silent, and deleting it left every test green; a near
+    miss is now written on stderr, and the relay carries on (issue #23).
+    """
+    relay = postfix_factory(env={'SASL_Passwds': '/etc/postfix/sasl/sasl_passwds'})
+    poll_until(lambda: relay.exec(["pgrep", "-P", "1", "-fx", "sleep 2"]).exit_code == 0,
+               description='"run" to reach its supervision loop')
+
+    # The timing can miss the reading on a loaded machine, so a few tries.
+    # What must never happen is the relay stopping over it.
+    for _ in range(3):
+        container_exec(relay, ["sh", "-c", NEAR_MISS])
+        try:
+            poll_until(lambda: 'saslauthd was missing from one reading' in container_stderr(relay),
+                       timeout=3, description="the near miss to be logged")
+            break
+        except AssertionError:
+            continue
+
+    assert 'saslauthd was missing from one reading' in container_stderr(relay)
+    wrapped = relay.get_wrapped_container()
+    wrapped.reload()
+    assert wrapped.status == 'running'
+    assert process_running(relay, 'saslauthd')
+
+
 def test_the_container_stops_gracefully(postfix_factory):
     """"docker stop" must not have to fall back to killing the container.
 
