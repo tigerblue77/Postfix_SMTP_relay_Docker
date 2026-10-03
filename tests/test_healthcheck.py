@@ -24,8 +24,11 @@ def start_relay(image, **env):
     container.start()
     # Postfix is the last daemon "run" starts, so a passing health check is
     # what "started" means here, and every test below breaks a relay that was
-    # known to be up.
-    run_healthcheck(container, expected=0, timeout=30)
+    # known to be up. Asserted rather than assumed: a relay that never came up
+    # would otherwise reach a test that stops a daemon it never had, and pass
+    # on the verdict it already gave (issue #22).
+    exit_code, output = run_healthcheck(container, expected=0, timeout=30)
+    assert exit_code == 0, output
 
     return container
 

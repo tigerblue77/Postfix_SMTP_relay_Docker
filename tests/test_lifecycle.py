@@ -39,6 +39,19 @@ def test_the_container_reports_healthy(postfix):
         raise
 
 
+def test_a_relay_that_does_not_start_says_why_in_the_failure(postfix_factory):
+    """Why a relay did not come up is only in its log, and a relay started by
+    a fixture fails as an error at setup, next to which pytest shows nothing
+    printed in teardown. So the fixture that started it puts the log in the
+    failure itself (issue #22). A comma in OPENDKIM_DOMAINS makes "run" refuse
+    at start-up with a line on stderr, which is what has to reach the failure.
+    """
+    with pytest.raises(AssertionError) as refused:
+        postfix_factory(env={'OPENDKIM_DOMAINS': 'first.example,second.example'})
+
+    assert 'contains a comma' in str(refused.value)
+
+
 def test_relaying_still_works_after_an_unclean_stop(postfix_factory, mailpit):
     """A killed container leaves pid files behind, which "run" cleans up.
 

@@ -11,6 +11,17 @@ pytest_plugins = [
 ]
 
 
+def container_output(name, container):
+    """A container's log, and its stderr when there is any, ready to print."""
+    stdout, stderr = container.get_logs()
+    output = f"----- {name} log -----\n{stdout.decode()}"
+    # "run" reports what stopped it on stderr, which is all a container that
+    # refused to start has to say.
+    if stderr:
+        output += f"\n----- {name} stderr -----\n{stderr.decode()}"
+    return output
+
+
 def print_log_on_failure(request, name, container):
     """Print a container log when the test that used it failed.
 
@@ -18,18 +29,19 @@ def print_log_on_failure(request, name, container):
     not relay it is only in the container log, which testcontainers throws
     away together with the container. Fixtures that stop containers have to
     call this before doing so.
+
+    Only a failure in the test body reaches the output this way: pytest shows
+    what a teardown printed next to a failed test, and not next to an error in
+    a fixture. A relay that never came up is therefore reported by the fixture
+    that started it, with the log in the failure itself, and is not printed
+    again here.
     """
     report = getattr(request.node, "report_call", None)
     if report is None or not report.failed:
         return
-    stdout, stderr = container.get_logs()
-    print(f"----- {name} log -----")
-    print(stdout.decode())
-    # "run" reports what stopped it on stderr, which is all a container that
-    # refused to start has to say.
-    if stderr:
-        print(f"----- {name} stderr -----")
-        print(stderr.decode())
+    if getattr(container, "log_in_failure", False):
+        return
+    print(container_output(name, container))
 
 
 @pytest.fixture(autouse=True)
