@@ -463,10 +463,20 @@ Notes a contributor will hit:
   a job that does not, which is
   not a style rule: a job without it runs to github's default of six hours,
   and the three that had none included **Build Image**, a required check.
-- **One action is pinned to a commit**, `EnricoMi/publish-unit-test-result-action`
-  in `test-results.yml`; everything else is on a major tag, and Dependabot's
-  weekly `github-actions` ecosystem bumps them. Do not "normalise" that
-  exception away.
+  Every workflow likewise states its token's `permissions:` at the top, as
+  little as it needs, and `tests/test_scan.py` fails on one that does not:
+  left out, the token gets the repository's default, which no diff shows. A
+  job widens it only for itself, the way the two in `ci.yml` that push the
+  GHCR mirror add `packages: write`. (issue #18)
+- **Every action from outside GitHub's own `actions/` organisation is pinned
+  to a commit**, with its version in a comment beside it: the `docker/*`
+  steps, `dependabot/fetch-metadata` and
+  `EnricoMi/publish-unit-test-result-action`. A tag is whatever its publisher
+  last pointed it at, and these run in the jobs that hold the registry
+  credentials or write to the repository. GitHub's own `actions/*` stay on a
+  major tag. Dependabot's weekly `github-actions` ecosystem bumps both kinds,
+  the pinned ones together with their comment, and `tests/test_scan.py` fails
+  on a third-party action named by a tag. (issue #18)
 - `ci.yml` runs on pushes to every branch and tag, plus `pull_request` and
   `workflow_dispatch`; `test.yml` runs on pushes to `master` only, plus
   `pull_request` and `workflow_dispatch`. Both cancel in-flight runs on any ref
