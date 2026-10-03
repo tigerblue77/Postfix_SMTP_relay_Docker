@@ -150,7 +150,7 @@ only image on another.
 
 ### Postfix master.cf variables
 
-You can modify master.cf using postconf with `POSTFIXMASTER_` variables. All double `__` symbols will be replaced with `/`. For example
+You can modify master.cf using postconf with `POSTFIXMASTER_` variables. All double `__` symbols will be replaced with `/`. An entry postconf refuses, such as one with fewer than the eight fields a service needs, stops the container with postconf's reason rather than starting without that service. For example
 
 ```
 - POSTFIXMASTER_submission__inet=submission inet n - y - - smtpd
