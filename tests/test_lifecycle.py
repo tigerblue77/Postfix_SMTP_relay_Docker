@@ -332,6 +332,31 @@ def test_the_chroot_still_works_when_the_queue_is_mounted_from_the_host(
     assert 'cannot create' not in container_log(relay)
 
 
+def test_the_queue_directory_itself_stays_owned_by_root(postfix_factory):
+    """Handing the queue to postfix does not hand over the directory holding it.
+
+    The recursive chown that gives the queue to postfix starts at the queue
+    directory and took that too, while postfix check wants it root's and said
+    "not owned by root: /var/spool/postfix/." on every start (issue #10). The
+    line went unseen only because syslog was not listening yet. Everything
+    below the directory is postfix's and stays so.
+    """
+    relay = postfix_factory()
+
+    def assert_ownership():
+        top = container_exec(relay, ["stat", "-c", "%U:%G", "/var/spool/postfix"])
+        below = container_exec(relay, ["stat", "-c", "%U", "/var/spool/postfix/incoming"])
+        assert top.strip() == 'root:root'
+        assert below.strip() == 'postfix'
+        assert container_exec(relay, ["sh", "-c", "postfix check 2>&1"]).strip() == ''
+
+    assert_ownership()
+
+    # A restart runs the same chown over a queue that already has an owner.
+    restart(relay)
+    assert_ownership()
+
+
 def test_the_greeting_check_still_covers_a_customised_smtp_service(postfix_factory):
     """A master.cf entry carries its options after the command.
 
