@@ -13,8 +13,8 @@ import smtplib
 import pytest
 
 from tests.helpers import (container_exec, container_log, container_stderr,
-                           esmtp_features, listening_ports, postconf, send,
-                           send_raw, smtp_connect, wait_for_log)
+                           esmtp_features, exit_code_within, listening_ports,
+                           postconf, send, send_raw, smtp_connect, wait_for_log)
 
 
 def test_postfix_variables_configure_main_cf(postfix_factory, mailpit):
@@ -55,6 +55,23 @@ def test_myhostname_is_what_the_relay_calls_itself(postfix_factory, mailpit):
 
     assert any('by smtp.example.test (Postfix)' in received
                for received in mailpit.wait_for_message('named relay')['headers']['received'])
+
+
+def test_a_master_cf_entry_postconf_refuses_stops_the_container(postfix_factory):
+    """One field short of the eight a master.cf entry needs, which is the
+    typo the format invites. postconf refuses it and leaves master.cf alone,
+    so the relay would come up healthy without the service asked for -- or,
+    for one replacing smtp/inet, with the shipped one it was meant to lock
+    down. It stops instead, naming the variable under postconf's reason.
+    """
+    relay = postfix_factory(
+        env={'POSTFIXMASTER_submission__inet': 'submission inet n - y - smtpd'},
+        wait_ready=False)
+
+    assert exit_code_within(relay, seconds=30) == 1
+    stderr = container_stderr(relay)
+    assert 'POSTFIXMASTER_submission__inet was refused by postconf' in stderr
+    assert 'fatal:' in stderr
 
 
 def test_postfixmaster_variables_configure_master_cf(postfix_factory, mailpit):

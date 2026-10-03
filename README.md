@@ -38,7 +38,9 @@ protection. So be careful to not expose it publicly, see
     <a href="#spf-and-dkim">SPF and DKIM</a>
     <ul>
       <li><a href="#spf">SPF</a></li>
+      <li><a href="#reverse-dns">Reverse DNS</a></li>
       <li><a href="#dkim">DKIM</a></li>
+      <li><a href="#dmarc">DMARC</a></li>
     </ul>
   </li>
   <li><a href="#volumes">Volumes</a></li>
@@ -161,7 +163,7 @@ only image on another.
 
 ### Postfix master.cf variables
 
-You can modify master.cf using postconf with `POSTFIXMASTER_` variables. All double `__` symbols will be replaced with `/`. For example
+You can modify master.cf using postconf with `POSTFIXMASTER_` variables. All double `__` symbols will be replaced with `/`. An entry postconf refuses, such as one with fewer than the eight fields a service needs, stops the container with postconf's reason rather than starting without that service. For example
 
 ```
 - POSTFIXMASTER_submission__inet=submission inet n - y - - smtpd
@@ -258,6 +260,20 @@ OpenDKIM [configuration options](http://opendkim.org/opendkim.conf.5.html) can b
 using `OPENDKIM_<name>` environment variables. See [Dockerfile](Dockerfile) for default
 configuration. For example `OPENDKIM_Canonicalization=relaxed/simple`.
 
+Two of those defaults decide what gets signed:
+
+- `OPENDKIM_InternalHosts=0.0.0.0/0, ::/0` makes every host internal, and
+  opendkim signs mail from internal hosts. That is what gets mail from the other
+  containers signed at all: they reach the relay over a docker network, and
+  opendkim's own default, `127.0.0.1`, would leave all of it unsigned.
+  Narrowing it turns signing off for the hosts it leaves out. It is not who may
+  relay, which is `POSTFIX_mynetworks`: the two are separate perimeters.
+- `OPENDKIM_Mode=s` signs and verifies nothing. opendkim verifies only mail from
+  hosts that are not internal, and with every host internal there are none, so
+  `sv` would claim a verification that never happens. Set `OPENDKIM_Mode=sv`
+  together with a narrower `OPENDKIM_InternalHosts` if the relay should check
+  the signatures of mail arriving from outside it.
+
 Enabling signing itself is described in [DKIM](#dkim).
 
 ### PostSRSd variables
@@ -271,6 +287,8 @@ and points postfix at it:
 environment:
   - POSTSRSD_SRS_DOMAIN=smtp.domain.tld
 ```
+
+The SRS domain needs an SPF record of its own, see [SPF](#spf).
 
 Any other setting from `/etc/default/postsrsd` can be set the same way, using
 `POSTSRSD_<name>` environment variables, for example
@@ -359,6 +377,10 @@ environment:
   # Whatever your docker network actually is
   - POSTFIX_mynetworks=127.0.0.0/8,172.16.0.0/12
 ```
+
+That narrows who may relay, not whose mail gets signed: DKIM signs whatever
+`OPENDKIM_InternalHosts` covers, which is every host unless you narrow it too
+(see [OpenDKIM variables](#opendkim-variables)).
 
 Addresses are not something to rely on under swarm. `docker stack deploy`
 publishes a port through the routing mesh, which source-NATs, so postfix sees
@@ -541,10 +563,35 @@ Under `docker stack deploy` the `security_opt` line is dropped — swarm prints
 <!-- SPF AND DKIM -->
 ## SPF and DKIM
 
+The records below live in DNS and in your provider's settings, outside the
+container, and a relay whose own configuration is correct still has its mail
+refused without them. This covers what is particular to this image, and links
+out for the rest.
+
 ### SPF
-When sending email using your own SMTP server it is probably a good idea
-to setup [SPF](https://en.wikipedia.org/wiki/Sender_Policy_Framework) for the
-domain you're sending from.
+[SPF](https://en.wikipedia.org/wiki/Sender_Policy_Framework) lists, for the
+domain you send from, the addresses allowed to send its mail, and which ones
+those are depends on how mail leaves:
+
+- Delivered directly, with no `POSTFIX_relayhost`, mail leaves from the host's
+  public address, so the record lists it:
+  `domain.tld. IN TXT "v=spf1 ip4:203.0.113.25 -all"`.
+- Through `POSTFIX_relayhost`, it leaves from the provider's servers, so the
+  record lists those instead, with the `include:` the provider documents.
+
+With [SRS](#postsrsd-variables) on, receivers check SPF against the SRS domain
+rather than the original sender's, so `POSTSRSD_SRS_DOMAIN` needs an SPF record
+of its own listing the same addresses. Without one, rewriting meant to keep
+forwarded mail passing SPF makes it fail instead.
+
+### Reverse DNS
+Delivering directly, the public address mail leaves from wants a PTR record
+resolving to the name in `POSTFIX_myhostname`, the one the relay greets
+receivers with. The PTR is set by whoever owns the address, your hosting
+provider or ISP, never in the container, and large receivers refuse mail from
+an address with none, or with a generic one, before they accept the message.
+Through `POSTFIX_relayhost` it is the provider's addresses that count, and
+their records are the provider's.
 
 ### DKIM
 To enable [DKIM](https://en.wikipedia.org/wiki/DomainKeys_Identified_Mail),
@@ -586,8 +633,51 @@ It is printed and not written back, so nothing lands in your volume that you
 did not put there. The rebuild is for RSA keys; an ed25519 key carries its
 public half differently, and the log says so rather than guessing.
 
+#### Changing the selector
+
+Editing the selector in `OPENDKIM_DOMAINS` and restarting generates the new key
+at that start and signs with it at once, before anyone can have published its
+record. A verifier that cannot find the record counts the signature as failed,
+not as missing, so while DNS catches up that mail passes DMARC only if SPF
+does. A domain signs with one selector at a time, so the old key stops being
+used at the same moment.
+
+Generate the next key ahead of time instead, while the current one goes on
+signing. For a new selector `mail2026` on `domain.tld`:
+
+1. Generate the key. Nothing uses it until `OPENDKIM_DOMAINS` names its
+   selector.
+   ```
+   docker exec <container> opendkim-genkey -D /etc/opendkim/keys/domain.tld \
+     --selector=mail2026 --domain=domain.tld --append-domain
+   ```
+2. Publish the record it wrote, which
+   `docker exec <container> cat /etc/opendkim/keys/domain.tld/mail2026.txt`
+   prints, and wait until it resolves.
+3. Set `OPENDKIM_DOMAINS=domain.tld=mail2026` and recreate the container. The
+   key is already there, so it is used as it is rather than regenerated.
+4. Keep the old record published for a few more days: mail signed with the old
+   key may still be queued, here or further along, and is verified when it is
+   delivered. Postfix retries for five days by default. Then remove the record,
+   and delete `mail.private` and `mail.txt`.
+
+Step 3 needs the key from step 1 to survive the container being recreated, so
+mount `/etc/opendkim/keys` as [Volumes](#volumes) describes. Without that, a
+`docker rm` and `docker run` loses it and generates yet another key, whose
+record nobody has published.
+
 Other OpenDKIM options are set with the `OPENDKIM_<name>` variables described in
 [OpenDKIM variables](#opendkim-variables).
+
+### DMARC
+A [DMARC](https://dmarc.org/overview/) policy on the domain in `From:` passes
+when SPF or DKIM passes *for that domain*. DKIM is the half this relay decides:
+opendkim picks the key by the `From:` address, so a message whose `From:` is at
+a domain in `OPENDKIM_DOMAINS` is signed with `d=` that domain, whatever its
+envelope sender. [SRS](#postsrsd-variables) rewrites only the envelope sender,
+so that alignment survives it. The mistake that breaks it is listing the
+relay's own hostname rather than the domains mail is sent from; see
+[DKIM](#dkim).
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -636,7 +726,10 @@ This image was published as `mwader/postfix-relay` until September 2026, from
 [wader/postfix-relay](https://github.com/wader/postfix-relay), which this
 repository started as a fork of and whose whole history it carries. Moving is
 an ordinary upgrade with a new name: change the `image:` line, keep the same
-variables and the same volumes. The upgrade tests start from the last
+variables and the same volumes. One default differs: `OPENDKIM_Mode` is `s`
+rather than `sv`. With the shipped `OPENDKIM_InternalHosts` the `v` never
+verified anything, so nothing changes unless you narrowed that yourself to have
+the rest verified, in which case set `OPENDKIM_Mode=sv`. The upgrade tests start from the last
 `mwader/postfix-relay` release for exactly that reason (see
 [Testing](#testing)).
 
@@ -735,6 +828,44 @@ volumes:
   - /your_local_path:/var/log/
 ```
 
+The file is capped by `RSYSLOG_LOG_FILE_MAX_SIZE`, `100m` by default: when it
+reaches that size it becomes `mail.log.1`, replacing the one before, and a new
+`mail.log` is started, so the file log takes about twice the limit at most:
+rsyslogd checks the size as it writes its buffer out, so each of the two files
+can pass the limit by up to 4 KiB.
+Sizes are written the way rsyslog reads them, a number with `k`, `m` or `g`, and
+a value it could not read stops the container rather than leave the file
+unbounded.
+
+Set `RSYSLOG_LOG_FILE_MAX_SIZE` empty to turn the cap off, when you would rather
+keep a longer history and rotate the file from the host. The container has no
+logrotate of its own, so without either the file grows with the traffic until
+the host's disk is full. Rotate it with `copytruncate`:
+
+```
+/your_local_path/mail.log {
+    daily
+    rotate 14
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
+```
+
+`copytruncate` is what makes that work. rsyslogd keeps the file open, so a
+rotation that renames it leaves rsyslogd writing into the renamed file, and one
+that deletes it frees no space. The price is that a line written between the
+copy and the truncation can be lost. If you would rather rename, have
+rsyslogd reopen the file in a `postrotate` script instead, with
+`docker exec <container> pkill -HUP rsyslogd`. Signalling the container
+itself, with `docker kill -s HUP`, does not work: the signal never reaches
+rsyslogd, and a container started with `init: true` stops at once without
+shutting its daemons down.
+
+If the log has to be kept, forwarding it to a syslog server that already
+manages its own files, as described next, avoids the file altogether.
+
 You can also forward log output to remote syslog server if you define `RSYSLOG_REMOTE_HOST` variable. It always uses UDP protocol and port `514` as default value,
 port number can be changed to different one with `RSYSLOG_REMOTE_PORT`. Default format of forwarded messages is defined by Rsyslog template `RSYSLOG_ForwardFormat`,
 you can change it to [another template](https://www.rsyslog.com/doc/v8-stable/configuration/templates.html) (section Reserved Template Names) if you wish with `RSYSLOG_REMOTE_TEMPLATE` variable.
@@ -762,7 +893,9 @@ the postfix master, because a relay that has lost OpenDKIM keeps accepting mail
 and sends it unsigned:
 
 - postfix is running and listening on every `inet` service in `master.cf`, so a
-  submission port added with a `POSTFIXMASTER_` variable is checked too;
+  submission port added with a `POSTFIXMASTER_` variable is checked too. A
+  `master.cf` postfix cannot read, or one with no `inet` service left in it,
+  is unhealthy rather than a list of no ports to check;
 - rsyslogd is running, otherwise mail is relayed without a trace;
 - OpenDKIM, PostSRSd and saslauthd are running when they were asked for. The
   check sees the container's environment, so a value given through a `_FILE`
@@ -770,8 +903,12 @@ and sends it unsigned:
   left on disk instead, and a relay configured that way is covered like any
   other.
 
-Listening sockets are read from the kernel rather than connected to, so the
-check leaves nothing in the log.
+Listening sockets are read from the kernel rather than connected to, so most
+checks leave nothing in the log. Every five minutes the check also asks postfix
+for a greeting, the way start-up does (below), so a configuration changed in a
+running container that leaves postfix listening but unable to serve is caught
+too: that is one connect and one disconnect in the log every five minutes, and
+nothing in between.
 
 A daemon that fails to start at all stops the container instead of relaying
 mail without the signing or rewriting that was configured, and a daemon that
