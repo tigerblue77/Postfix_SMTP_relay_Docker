@@ -743,10 +743,10 @@ changing any of them.
    `POSTSRSD_SRS_DOMAIN` on an image built without it exits 1 rather than
    relaying without the rewriting that was asked for — and in `healthcheck`,
    which fails once `postsrsd` was configured but is no longer running. All
-   three move together. The refusal also has to stay *above* the postfix start:
-   a container that came up first and died second would have relayed the
-   unrewritten mail, and `tests/test_srs.py` asserts the log is empty at the
-   point it exits. (`Closes wader/postfix-relay#119`, commit `9755f7d`)
+   three move together. The refusal also has to stay *above* every daemon,
+   rsyslogd included: a container that came up first and died second would
+   have relayed the unrewritten mail, and `tests/test_srs.py` asserts the log
+   is empty at the point it exits. (`Closes wader/postfix-relay#119`, commit `9755f7d`)
 
 4. **The `Dockerfile` deletes `/etc/postsrsd.secret` at build time**, and `run`
    generates a random one when the file is missing *or empty* (`[ ! -s ]`, so a
@@ -1441,3 +1441,23 @@ changing any of them.
     back brings the rest back. Two tests in `tests/test_lifecycle.py` pin it:
     the ownership across a restart, and a queue left to root being handed back
     to postfix. (issue #10)
+
+40. **`rsyslogd` is started before every other daemon, and after the two things
+    that must precede it.** Until it is up there is no `/dev/log`, and
+    `syslog(3)` does not fail when nothing listens on one: what a daemon writes
+    while starting is dropped without an error. With rsyslogd last, that was
+    master's own `daemon started` line, `postfix-script`'s output and the reason
+    opendkim gives for refusing a socket, so the container log began at the last
+    daemon to start and a container that did not come up left a generic
+    sentence from `run` as all there was to read. The block sits straight after
+    the `trap`, so that `$rsyslogPid` exists before `stopDaemons` can run, and
+    it keeps two things above it. The `postsrsd` refusal (3) comes first, so a
+    container that refuses to start has a log that says nothing of a start that
+    never happened. And the queue's ownership (39) is set before it, because
+    the socket rsyslogd opens for the chrooted daemons lives under the queue:
+    rsyslogd is a daemon that writes there, and ownership is the last thing
+    that should be decided while it does. The greeting check stays where it is,
+    after postfix: the comment on it that says it follows rsyslogd is still
+    true, and is now true of everything else too. The `Skipping
+    /etc/rsyslog.conf generating` line therefore comes first in the log of a
+    restarted container, which `tests/test_logging.py` splits on. (issue #11)

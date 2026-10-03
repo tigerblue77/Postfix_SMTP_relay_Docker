@@ -482,16 +482,70 @@ stopDaemons()
 # the script would otherwise carry on from where the signal interrupted it and
 # report the daemons it had just stopped as daemons that would not start.
 trap 'stopping=1 ; stopDaemons ; exit 0' SIGTERM SIGINT
+
+# Refused before anything is started, rsyslogd included: a container that came
+# up first and died second would have relayed the unrewritten mail, and its log
+# would show a start that never happened.
+if [ ! -z "$POSTSRSD_SRS_DOMAIN" ] && ! command -v postsrsd > /dev/null ; then
+  echo "POSTSRSD_SRS_DOMAIN is set but postsrsd is not part of this image: Debian does not build it for $(dpkg --print-architecture)." >&2
+  exit 1
+fi
+
+# rsyslogd comes up before every other daemon. Until it does there is no
+# /dev/log, and syslog(3) does not fail when nothing listens on it: what a
+# daemon writes while starting is dropped without an error, master's own
+# "daemon started" line and the reason opendkim gives for refusing a socket
+# among it. Started here, the container log begins with the first daemon
+# instead of with the last (issue #11). It stays below the postfix
+# set-permissions above, the last thing that sets the ownership of the queue
+# the socket for the chrooted daemons is opened under.
+
+# Don't fiddle with existing config file (e.g. mounted from filesystem)
+if [ -e /etc/rsyslog.conf ]; then
+  echo "Skipping /etc/rsyslog.conf generating - file already exists"
+else
+  # Rsyslog base
+  cat <<'EOF' > /etc/rsyslog.conf
+$ModLoad imuxsock
+$WorkDirectory /var/spool/rsyslog
+
+include(file="/etc/rsyslog.d/*.conf")
+EOF
+
+  # $ActionFileDefaultTemplate only applies to the actions written after it,
+  # so it has to come before the ones below.
+  if [ "${RSYSLOG_TIMESTAMP}" == 'no' ] ; then
+    echo '$template noTimestampFormat,"%syslogtag%%msg%\n"' >> /etc/rsyslog.conf
+    echo '$ActionFileDefaultTemplate noTimestampFormat' >> /etc/rsyslog.conf
+  fi
+
+  echo '*.*;auth,authpriv.none /dev/stdout' >> /etc/rsyslog.conf
+
+  if [ "${RSYSLOG_LOG_TO_FILE}" == 'yes' ] ; then
+    echo 'mail.* -/var/log/mail.log' >> /etc/rsyslog.conf
+  fi
+
+  if [ -z ${RSYSLOG_REMOTE_PORT} ] ; then
+    RSYSLOG_REMOTE_PORT=514
+  fi
+  if [ -z ${RSYSLOG_REMOTE_TEMPLATE} ] ; then
+    RSYSLOG_REMOTE_TEMPLATE=RSYSLOG_ForwardFormat
+  fi
+  if [ ! -z ${RSYSLOG_REMOTE_HOST} ] ; then
+    echo "*.* action(type=\"omfwd\" target=\"${RSYSLOG_REMOTE_HOST}\" port=\"${RSYSLOG_REMOTE_PORT}\" template=\"${RSYSLOG_REMOTE_TEMPLATE}\")" >> /etc/rsyslog.conf
+  fi
+fi
+
+rsyslogd -n &
+rsyslogPid=$!
+supervised="$supervised rsyslogd"
+
 if [ ! -z "$OPENDKIM_DOMAINS" ] ; then
   dkimConfig
   startService opendkim opendkim
 fi
 
 if [ ! -z "$POSTSRSD_SRS_DOMAIN" ] ; then
-  if ! command -v postsrsd > /dev/null ; then
-    echo "POSTSRSD_SRS_DOMAIN is set but postsrsd is not part of this image: Debian does not build it for $(dpkg --print-architecture)." >&2
-    exit 1
-  fi
   srsConfig
   startService postsrsd postsrsd
 fi
@@ -547,46 +601,6 @@ EOF
 fi
 
 startService postfix master
-
-# Don't fiddle with existing config file (e.g. mounted from filesystem)
-if [ -e /etc/rsyslog.conf ]; then
-  echo "Skipping /etc/rsyslog.conf generating - file already exists"
-else
-  # Rsyslog base
-  cat <<'EOF' > /etc/rsyslog.conf
-$ModLoad imuxsock
-$WorkDirectory /var/spool/rsyslog
-
-include(file="/etc/rsyslog.d/*.conf")
-EOF
-
-  # $ActionFileDefaultTemplate only applies to the actions written after it,
-  # so it has to come before the ones below.
-  if [ "${RSYSLOG_TIMESTAMP}" == 'no' ] ; then
-    echo '$template noTimestampFormat,"%syslogtag%%msg%\n"' >> /etc/rsyslog.conf
-    echo '$ActionFileDefaultTemplate noTimestampFormat' >> /etc/rsyslog.conf
-  fi
-
-  echo '*.*;auth,authpriv.none /dev/stdout' >> /etc/rsyslog.conf
-
-  if [ "${RSYSLOG_LOG_TO_FILE}" == 'yes' ] ; then
-    echo 'mail.* -/var/log/mail.log' >> /etc/rsyslog.conf
-  fi
-
-  if [ -z ${RSYSLOG_REMOTE_PORT} ] ; then
-    RSYSLOG_REMOTE_PORT=514
-  fi
-  if [ -z ${RSYSLOG_REMOTE_TEMPLATE} ] ; then
-    RSYSLOG_REMOTE_TEMPLATE=RSYSLOG_ForwardFormat
-  fi
-  if [ ! -z ${RSYSLOG_REMOTE_HOST} ] ; then
-    echo "*.* action(type=\"omfwd\" target=\"${RSYSLOG_REMOTE_HOST}\" port=\"${RSYSLOG_REMOTE_PORT}\" template=\"${RSYSLOG_REMOTE_TEMPLATE}\")" >> /etc/rsyslog.conf
-  fi
-fi
-
-rsyslogd -n &
-rsyslogPid=$!
-supervised="$supervised rsyslogd"
 
 # A running master is not the same as a postfix that can serve. Master binds
 # the port and forks an smtpd per connection, so a setting smtpd rejects when
