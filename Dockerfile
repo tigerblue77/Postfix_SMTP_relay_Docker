@@ -107,6 +107,7 @@ ENV \
   OPENDKIM_SigningTable=refile:/etc/opendkim/SigningTable \
   RSYSLOG_TIMESTAMP=no \
   RSYSLOG_LOG_TO_FILE=no \
+  RSYSLOG_LOG_FILE_MAX_SIZE=100m \
   SASL_Passwds=""
 RUN mkdir -p /etc/opendkim/keys
 COPY run healthcheck /root/
