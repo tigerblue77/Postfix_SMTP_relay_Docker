@@ -97,7 +97,7 @@ services:
     restart: always
     environment:
       - POSTFIX_myhostname=smtp.domain.tld
-      - OPENDKIM_DOMAINS=smtp.domain.tld
+      - OPENDKIM_DOMAINS=domain.tld  # the domain mail is sent from
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
@@ -539,11 +539,17 @@ domain you're sending from.
 To enable [DKIM](https://en.wikipedia.org/wiki/DomainKeys_Identified_Mail),
 specify a whitespace-separated list of domains in the environment variable
 `OPENDKIM_DOMAINS`. The default DKIM selector is "mail", but can be changed to
-"`<selector>`" using the syntax `OPENDKIM_DOMAINS=<domain>=<selector>`. Not
-comma-separated, unlike `POSTFIX_mynetworks` or
-`POSTSRSD_SRS_EXCLUDE_DOMAINS` above — a comma is an ordinary character in a
-domain name, and an entry containing one is refused rather than signed for
-under the wrong name.
+"`<selector>`" using the syntax `OPENDKIM_DOMAINS=<domain>=<selector>`. The
+domains are those of the addresses mail is sent *from* — the `From:` of the
+messages your applications hand the relay — and not the relay's own name: each
+entry signs `*@<domain>` and nothing else, so
+`OPENDKIM_DOMAINS=smtp.domain.tld` signs only mail from `…@smtp.domain.tld`. A
+subdomain is not covered by its parent either and needs its own entry, as in
+`OPENDKIM_DOMAINS="domain.tld notifications.domain.tld"`. A message that
+matches no entry goes out unsigned, and nothing is logged for it. Not
+comma-separated, unlike `POSTFIX_mynetworks` or `POSTSRSD_SRS_EXCLUDE_DOMAINS`
+above — a comma is an ordinary character in a domain name, and an entry
+containing one is refused rather than signed for under the wrong name.
 
 At container start, RSA key pairs will be generated for each domain unless the
 file `/etc/opendkim/keys/<domain>/<selector>.private` exists.
@@ -563,9 +569,9 @@ DNS records to configure can be found in the container log or by running `docker
 ```bash
 $ docker exec 7996454b5fca sh -c 'cat /etc/opendkim/keys/*/*.txt'
 
-mail._domainkey.smtp.domain.tld. IN	TXT	( "v=DKIM1; h=sha256; k=rsa; "
+mail._domainkey.domain.tld. IN	TXT	( "v=DKIM1; h=sha256; k=rsa; "
 	  "p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0Dx7wLGPFVaxVQ4TGym/eF89aQ8oMxS9v5BCc26Hij91t2Ci8Fl12DHNVqZoIPGm+9tTIoDVDFEFrlPhMOZl8i4jU9pcFjjaIISaV2+qTa8uV1j3MyByogG8pu4o5Ill7zaySYFsYB++cHJ9pjbFSC42dddCYMfuVgrBsLNrvEi3dLDMjJF5l92Uu8YeswFe26PuHX3Avr261n"
-	  "j5joTnYwat4387VEUyGUnZ0aZxCERi+ndXv2/wMJ0tizq+a9+EgqIb+7lkUc2XciQPNuTujM25GhrQBEKznvHyPA6fHsFheymOuB763QpkmnQQLCxyLygAY9mE/5RY+5Q6J9oDOQIDAQAB" )  ; ----- DKIM key mail for smtp.domain.tld
+	  "j5joTnYwat4387VEUyGUnZ0aZxCERi+ndXv2/wMJ0tizq+a9+EgqIb+7lkUc2XciQPNuTujM25GhrQBEKznvHyPA6fHsFheymOuB763QpkmnQQLCxyLygAY9mE/5RY+5Q6J9oDOQIDAQAB" )  ; ----- DKIM key mail for domain.tld
 ```
 
 A key restored on its own — a backup that kept the `.private` and not the
