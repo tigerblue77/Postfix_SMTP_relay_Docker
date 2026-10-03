@@ -356,6 +356,19 @@ srsConfig()
     fi
 }
 
+# RSYSLOG_LOG_FILE_MAX_SIZE goes to rsyslogd as it is, and rsyslogd takes a
+# value it cannot read as no limit at all, which is the one outcome the setting
+# exists to prevent. Checked here, before anything is started or written: the
+# generated /etc/rsyslog.conf is kept across restarts, so a refusal half-way
+# through writing it would leave a broken one in place for good.
+if [ "${RSYSLOG_LOG_TO_FILE}" == 'yes' ] && [ -n "${RSYSLOG_LOG_FILE_MAX_SIZE}" ] \
+   && [[ ! "${RSYSLOG_LOG_FILE_MAX_SIZE}" =~ ^[0-9]+[kKmMgG]?$ ]] ; then
+  echo "RSYSLOG_LOG_FILE_MAX_SIZE is '${RSYSLOG_LOG_FILE_MAX_SIZE}', which is not" \
+       "a size such as 100m. Refusing to start with a file log nothing bounds;" \
+       "set it empty to leave the file unbounded on purpose." >&2
+  exit 1
+fi
+
 # Unclean container stop might leave pid files around and rsyslogd seems
 # sometimes falsely think it's already running if some other process
 # happens to have its old pid when starting.
@@ -402,7 +415,20 @@ fi
 # POSTFIX_var env -> postconf -e var=$POSTFIX_var
 for e in ${!POSTFIX_*} ; do postconf -e "${e:8}=${!e}" ; done
 # POSTFIXMASTER_var env -> postconf -Me var=$POSTFIXMASTER_var + replace __ with /
-for e in ${!POSTFIXMASTER_*} ; do v="${e:14}" && postconf -Me "${v//__/\/}=${!e}"; done
+# A refused entry -- one field short of the eight master.cf needs is the typo
+# the format invites -- leaves master.cf as it was: the service asked for is
+# missing, or the one it was meant to replace, with whatever it was meant to
+# lock down, stays in place. Postfix still starts and the relay reports
+# healthy, since the health check can only check what master.cf holds. So it
+# stops here, below postconf's own "fatal:" line, like every other thing that
+# was asked for and cannot be done.
+for e in ${!POSTFIXMASTER_*} ; do
+  v="${e:14}"
+  postconf -Me "${v//__/\/}=${!e}" || {
+    echo "$e was refused by postconf, refusing to relay without it." >&2
+    exit 1
+  }
+done
 # POSTMAP_var env value -> /etc/postfix/var
 shopt -s nullglob
 for e in ${!POSTMAP_*} ; do
@@ -419,7 +445,20 @@ for e in ${!POSTMAP_*} ; do
 done
 shopt -u nullglob
 
-chown -R postfix:postfix /var/lib/postfix /var/spool/postfix
+chown -R postfix:postfix /var/lib/postfix
+
+# The queue is handed over by postfix itself, which knows who owns what in it:
+# the queue directories and the files in them are postfix's, the directory
+# holding them, pid/ and the chroot copies under etc/ and usr/ are root's, and
+# public/ and maildrop/ belong to the postdrop group. A recursive chown gave all
+# of it to postfix:postfix, and every restart then drew a dozen "not owned by"
+# warnings from postfix check (issue #10).
+#
+# The queue comes first in postfix-files, so what fails later cannot undo it.
+# What fails is the first manual page: the slim base image ships none, and
+# set-permissions stops at the first entry it cannot chown with an error that
+# means nothing here, so that one line is dropped.
+postfix set-permissions 2>&1 | grep -v '/usr/share/man/'
 
 # OPENDKIM_var env -> put "key value" line in /etc/opendkim.conf
 echo -n > /etc/opendkim.conf
@@ -469,16 +508,86 @@ stopDaemons()
 # the script would otherwise carry on from where the signal interrupted it and
 # report the daemons it had just stopped as daemons that would not start.
 trap 'stopping=1 ; stopDaemons ; exit 0' SIGTERM SIGINT
+
+# Refused before anything is started, rsyslogd included: a container that came
+# up first and died second would have relayed the unrewritten mail, and its log
+# would show a start that never happened.
+if [ ! -z "$POSTSRSD_SRS_DOMAIN" ] && ! command -v postsrsd > /dev/null ; then
+  echo "POSTSRSD_SRS_DOMAIN is set but postsrsd is not part of this image: Debian does not build it for $(dpkg --print-architecture)." >&2
+  exit 1
+fi
+
+# rsyslogd comes up before every other daemon. Until it does there is no
+# /dev/log, and syslog(3) does not fail when nothing listens on it: what a
+# daemon writes while starting is dropped without an error, master's own
+# "daemon started" line and the reason opendkim gives for refusing a socket
+# among it. Started here, the container log begins with the first daemon
+# instead of with the last (issue #11). It stays below the postfix
+# set-permissions above, the last thing that sets the ownership of the queue
+# the socket for the chrooted daemons is opened under.
+
+# Don't fiddle with existing config file (e.g. mounted from filesystem)
+if [ -e /etc/rsyslog.conf ]; then
+  echo "Skipping /etc/rsyslog.conf generating - file already exists"
+else
+  # Rsyslog base
+  cat <<'EOF' > /etc/rsyslog.conf
+$ModLoad imuxsock
+$WorkDirectory /var/spool/rsyslog
+
+include(file="/etc/rsyslog.d/*.conf")
+EOF
+
+  # $ActionFileDefaultTemplate only applies to the actions written after it,
+  # so it has to come before the ones below.
+  if [ "${RSYSLOG_TIMESTAMP}" == 'no' ] ; then
+    echo '$template noTimestampFormat,"%syslogtag%%msg%\n"' >> /etc/rsyslog.conf
+    echo '$ActionFileDefaultTemplate noTimestampFormat' >> /etc/rsyslog.conf
+  fi
+
+  echo '*.*;auth,authpriv.none /dev/stdout' >> /etc/rsyslog.conf
+
+  # Bounded unless asked otherwise: nothing else in the container rotates the
+  # file, and on the host directory the README suggests mounting it grows
+  # until that disk is full (issue #30). At the limit rsyslogd runs the script
+  # below, which keeps the one file before this one, and then starts a new
+  # file, so the log takes at most twice the limit. The script is written
+  # rather than inlined: rsyslogd runs a size limit command without a shell,
+  # and stops writing the file if the command leaves it too big.
+  if [ "${RSYSLOG_LOG_TO_FILE}" == 'yes' ] && [ -n "${RSYSLOG_LOG_FILE_MAX_SIZE}" ] ; then
+    printf '%s\n' '#!/bin/sh' \
+      '# Run by rsyslogd when the file log reaches RSYSLOG_LOG_FILE_MAX_SIZE.' \
+      'mv -f /var/log/mail.log /var/log/mail.log.1' > /usr/local/sbin/rotate-file-log
+    chmod 755 /usr/local/sbin/rotate-file-log
+    echo "mail.* action(type=\"omfile\" file=\"/var/log/mail.log\"" \
+         "rotation.sizeLimit=\"${RSYSLOG_LOG_FILE_MAX_SIZE}\"" \
+         "rotation.sizeLimitCommand=\"/usr/local/sbin/rotate-file-log\")" \
+         >> /etc/rsyslog.conf
+  elif [ "${RSYSLOG_LOG_TO_FILE}" == 'yes' ] ; then
+    echo 'mail.* -/var/log/mail.log' >> /etc/rsyslog.conf
+  fi
+
+  if [ -z ${RSYSLOG_REMOTE_PORT} ] ; then
+    RSYSLOG_REMOTE_PORT=514
+  fi
+  if [ -z ${RSYSLOG_REMOTE_TEMPLATE} ] ; then
+    RSYSLOG_REMOTE_TEMPLATE=RSYSLOG_ForwardFormat
+  fi
+  if [ ! -z ${RSYSLOG_REMOTE_HOST} ] ; then
+    echo "*.* action(type=\"omfwd\" target=\"${RSYSLOG_REMOTE_HOST}\" port=\"${RSYSLOG_REMOTE_PORT}\" template=\"${RSYSLOG_REMOTE_TEMPLATE}\")" >> /etc/rsyslog.conf
+  fi
+fi
+
+rsyslogd -n &
+rsyslogPid=$!
+supervised="$supervised rsyslogd"
+
 if [ ! -z "$OPENDKIM_DOMAINS" ] ; then
   dkimConfig
   startService opendkim opendkim
 fi
 
 if [ ! -z "$POSTSRSD_SRS_DOMAIN" ] ; then
-  if ! command -v postsrsd > /dev/null ; then
-    echo "POSTSRSD_SRS_DOMAIN is set but postsrsd is not part of this image: Debian does not build it for $(dpkg --print-architecture)." >&2
-    exit 1
-  fi
   srsConfig
   startService postsrsd postsrsd
 fi
@@ -521,9 +630,9 @@ EOF
   # Set here rather than through dpkg-statoverride, which only records what a
   # future dpkg unpack should apply -- nothing a container ever runs -- so the
   # mode never reached the directory at all and re-adding the override was an
-  # error on every restart (issue wader/postfix-relay#179). This has to stay
-  # below the "chown -R postfix:postfix /var/spool/postfix" above, which would
-  # take the directory back.
+  # error on every restart (issue wader/postfix-relay#179). This stays below
+  # the postfix set-permissions above, the last thing that sets the ownership
+  # of the queue, so that nothing which does can take the directory back.
   install -d -o root -g sasl -m 710 /var/spool/postfix/var/run/saslauthd
 
   saslauthd -c -r -a pam -m /var/spool/postfix/var/run/saslauthd &
@@ -534,46 +643,6 @@ EOF
 fi
 
 startService postfix master
-
-# Don't fiddle with existing config file (e.g. mounted from filesystem)
-if [ -e /etc/rsyslog.conf ]; then
-  echo "Skipping /etc/rsyslog.conf generating - file already exists"
-else
-  # Rsyslog base
-  cat <<'EOF' > /etc/rsyslog.conf
-$ModLoad imuxsock
-$WorkDirectory /var/spool/rsyslog
-
-include(file="/etc/rsyslog.d/*.conf")
-EOF
-
-  # $ActionFileDefaultTemplate only applies to the actions written after it,
-  # so it has to come before the ones below.
-  if [ "${RSYSLOG_TIMESTAMP}" == 'no' ] ; then
-    echo '$template noTimestampFormat,"%syslogtag%%msg%\n"' >> /etc/rsyslog.conf
-    echo '$ActionFileDefaultTemplate noTimestampFormat' >> /etc/rsyslog.conf
-  fi
-
-  echo '*.*;auth,authpriv.none /dev/stdout' >> /etc/rsyslog.conf
-
-  if [ "${RSYSLOG_LOG_TO_FILE}" == 'yes' ] ; then
-    echo 'mail.* -/var/log/mail.log' >> /etc/rsyslog.conf
-  fi
-
-  if [ -z ${RSYSLOG_REMOTE_PORT} ] ; then
-    RSYSLOG_REMOTE_PORT=514
-  fi
-  if [ -z ${RSYSLOG_REMOTE_TEMPLATE} ] ; then
-    RSYSLOG_REMOTE_TEMPLATE=RSYSLOG_ForwardFormat
-  fi
-  if [ ! -z ${RSYSLOG_REMOTE_HOST} ] ; then
-    echo "*.* action(type=\"omfwd\" target=\"${RSYSLOG_REMOTE_HOST}\" port=\"${RSYSLOG_REMOTE_PORT}\" template=\"${RSYSLOG_REMOTE_TEMPLATE}\")" >> /etc/rsyslog.conf
-  fi
-fi
-
-rsyslogd -n &
-rsyslogPid=$!
-supervised="$supervised rsyslogd"
 
 # A running master is not the same as a postfix that can serve. Master binds
 # the port and forks an smtpd per connection, so a setting smtpd rejects when

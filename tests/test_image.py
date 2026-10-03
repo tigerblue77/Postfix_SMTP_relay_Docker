@@ -36,7 +36,7 @@ DEFAULT_ENVIRONMENT = [
     ('POSTFIX_smtpd_tls_security_level', 'none'),
     # OpenDKIM: everything but the domains, which is what turns signing on.
     ('OPENDKIM_Socket', 'inet:12301@localhost'),
-    ('OPENDKIM_Mode', 'sv'),
+    ('OPENDKIM_Mode', 's'),
     ('OPENDKIM_UMask', '002'),
     ('OPENDKIM_Syslog', 'yes'),
     ('OPENDKIM_TrustAnchorFile', '/usr/share/dns/root.key'),
@@ -46,6 +46,8 @@ DEFAULT_ENVIRONMENT = [
     # rsyslog: to stdout only, without repeating the time docker already adds.
     ('RSYSLOG_TIMESTAMP', 'no'),
     ('RSYSLOG_LOG_TO_FILE', 'no'),
+    # Only read when the file log is on, and then what keeps it bounded.
+    ('RSYSLOG_LOG_FILE_MAX_SIZE', '100m'),
     # Set but empty, which is what keeps saslauthd from starting.
     ('SASL_Passwds', ''),
 ]

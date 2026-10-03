@@ -14,7 +14,8 @@ import pytest
 
 from tests.helpers import (container_exec, container_log, container_stderr,
                            dkim_dns_record, exit_code_within, image_run,
-                           listening_sockets, postconf, restart, send, verifies)
+                           listening_sockets, postconf, restart, send, send_raw,
+                           verifies)
 
 KEY_PATH = '/etc/opendkim/keys/example.com/sel1.private'
 
@@ -207,6 +208,26 @@ def test_milter_settings_are_left_alone_when_set_explicitly(postfix_factory):
 
     assert postconf(relay, 'milter_default_action') == 'tempfail'
     assert postconf(relay, 'smtpd_milters') == 'inet:localhost:12301, inet:localhost:12302'
+
+
+def test_the_relay_signs_and_does_not_verify(postfix_factory, mailpit):
+    """Every host is internal (OPENDKIM_InternalHosts), and opendkim verifies
+    only mail from hosts that are not, so this relay never verifies anything.
+    The mode says so rather than shipping "sv" and claiming a check that
+    never ran: a signature arriving with a message, broken or not, goes
+    through unremarked.
+    """
+    relay = postfix_factory(env={'OPENDKIM_DOMAINS': 'example.org'})
+    assert 'Mode s\n' in container_exec(relay, ['cat', '/etc/opendkim.conf'])
+
+    send_raw(relay, "DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=sel1;\r\n"
+                    " h=from; bh=AAAA; b=AAAA\r\n"
+                    "Subject: arrives signed\r\nFrom: sender@example.com\r\n"
+                    "To: receiver@example.com\r\n\r\nbody\r\n")
+
+    headers = mailpit.wait_for_message('arrives signed')['headers']
+    assert 'dkim-signature' in headers
+    assert 'authentication-results' not in headers
 
 
 SIGNING = {'OPENDKIM_DOMAINS': 'example.com=sel1'}
@@ -403,6 +424,44 @@ def test_a_key_brought_from_somewhere_else_is_used_as_it_is(postfix_factory, mai
     raw = mailpit.raw(mailpit.wait_for_message('signed by a mounted key')['ID'])
 
     assert verifies(raw, dkim_dns_record(relay, 'example.com', 'sel1'))
+
+
+def test_a_selector_generated_ahead_takes_over_without_being_regenerated(
+        docker_volume, postfix_factory, mailpit):
+    """The README's selector rotation, run as it is written there.
+
+    Editing the selector and restarting generates the new key at the start that
+    signs with it, before its record can have been published. The README has
+    the next key generated ahead with opendkim-genkey in the running container
+    instead, published, and only then named in OPENDKIM_DOMAINS. That relies on
+    two things this checks: the extra key is not picked up before it is named,
+    and once it is named it is used as it is rather than regenerated. Issue #29.
+    """
+    volumes = {docker_volume: '/etc/opendkim/keys'}
+    next_key = '/etc/opendkim/keys/example.com/next.private'
+
+    first = postfix_factory(env={'OPENDKIM_DOMAINS': 'example.com'}, volumes=volumes)
+    container_exec(first, ["opendkim-genkey", "-D", "/etc/opendkim/keys/example.com",
+                           "--selector=next", "--domain=example.com", "--append-domain"])
+    key = container_exec(first, ["md5sum", next_key]).split()[0]
+    record = dkim_dns_record(first, 'example.com', 'next')
+
+    send(first, sender='sender@example.com', subject='before the switch')
+    before = mailpit.wait_for_message('before the switch')['headers']['dkim-signature'][0]
+    assert 's=mail' in before
+
+    first.get_wrapped_container().stop()
+    second = postfix_factory(env={'OPENDKIM_DOMAINS': 'example.com=next'}, volumes=volumes)
+
+    assert 'Generating one now' not in container_log(second)
+    assert container_exec(second, ["md5sum", next_key]).split()[0] == key
+
+    send(second, sender='sender@example.com', subject='after the switch',
+         body='signed body')
+    message = mailpit.wait_for_message('after the switch')
+
+    assert 's=next' in message['headers']['dkim-signature'][0]
+    assert verifies(mailpit.raw(message['ID']), record)
 
 
 def test_a_key_without_its_record_file_still_says_what_to_publish(postfix_factory, mailpit,

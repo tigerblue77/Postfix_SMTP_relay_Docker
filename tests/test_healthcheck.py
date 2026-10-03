@@ -24,8 +24,11 @@ def start_relay(image, **env):
     container.start()
     # Postfix is the last daemon "run" starts, so a passing health check is
     # what "started" means here, and every test below breaks a relay that was
-    # known to be up.
-    run_healthcheck(container, expected=0, timeout=30)
+    # known to be up. Asserted rather than assumed: a relay that never came up
+    # would otherwise reach a test that stops a daemon it never had, and pass
+    # on the verdict it already gave (issue #22).
+    exit_code, output = run_healthcheck(container, expected=0, timeout=30)
+    assert exit_code == 0, output
 
     return container
 
@@ -90,6 +93,40 @@ def test_configured_but_unopened_port_is_unhealthy(postfix_image):
         container.exec("postfix reload")
 
         assert run_healthcheck(container, expected=0)[0] == 0
+    finally:
+        container.stop()
+
+def test_a_master_cf_postconf_cannot_read_is_unhealthy(postfix_image):
+    """The ports come from master.cf through postconf, which the check used to
+    run inside a command substitution: a postconf that failed printed nothing,
+    left no port to check, and the relay was reported healthy. master goes on
+    running with what it loaded, so this is what a master.cf edited in a
+    running container into something postfix cannot parse looks like
+    (issue #12).
+    """
+    container = start_relay(postfix_image)
+
+    try:
+        container.exec(["sh", "-c", "echo 'not a service line' >> /etc/postfix/master.cf"])
+
+        exit_code, output = run_healthcheck(container, expected=1)
+        assert exit_code == 1
+        assert 'no port was checked' in output
+    finally:
+        container.stop()
+
+def test_a_relay_with_no_inet_service_is_unhealthy(postfix_image):
+    """With no inet service left in master.cf there is no port to check, and
+    nothing a client can reach: the loop over the ports used to find nothing
+    wrong with that (issue #12)."""
+    container = start_relay(postfix_image)
+
+    try:
+        container.exec(["postconf", "-M", "-X", "smtp/inet"])
+
+        exit_code, output = run_healthcheck(container, expected=1)
+        assert exit_code == 1
+        assert 'no inet service' in output
     finally:
         container.stop()
 

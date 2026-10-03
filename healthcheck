@@ -43,7 +43,16 @@ running master || fail "postfix master is not running"
 # count limit rather than disabled, and postfix binds the port either way; a
 # service that really is disabled is removed with "postconf -MX" and postconf
 # stops printing it at all.
-for service in $(postconf -M | awk '$2 == "inet" { print $1 }') ; do
+#
+# postconf is run on its own first. Inside the command substitution the loop
+# used to read, a postconf that fails -- on a master.cf edited into a state it
+# cannot parse -- printed nothing, the loop checked nothing, and the relay was
+# reported healthy with no port looked at. And a master.cf with no inet
+# service at all is a relay that accepts nothing.
+services=$(postconf -M) || fail "postconf cannot read the postfix configuration, so no port was checked"
+inetServices=$(awk '$2 == "inet" { print $1 }' <<< "$services")
+[ -n "$inetServices" ] || fail "master.cf declares no inet service, so the relay accepts nothing"
+for service in $inetServices ; do
   endpoint="${service##*:}"
   port=$(getent services "$endpoint" | awk '{ sub("/.*", "", $2) ; print $2 }')
   listening "${port:-$endpoint}" || fail "postfix is not listening on $service"

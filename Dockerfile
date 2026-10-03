@@ -98,7 +98,7 @@ ENV \
   POSTFIX_smtp_tls_CAfile=/etc/ssl/certs/ca-certificates.crt \
   POSTFIX_smtpd_tls_security_level=none \
   OPENDKIM_Socket=inet:12301@localhost \
-  OPENDKIM_Mode=sv \
+  OPENDKIM_Mode=s \
   OPENDKIM_UMask=002 \
   OPENDKIM_Syslog=yes \
   OPENDKIM_TrustAnchorFile=/usr/share/dns/root.key \
@@ -107,6 +107,7 @@ ENV \
   OPENDKIM_SigningTable=refile:/etc/opendkim/SigningTable \
   RSYSLOG_TIMESTAMP=no \
   RSYSLOG_LOG_TO_FILE=no \
+  RSYSLOG_LOG_FILE_MAX_SIZE=100m \
   SASL_Passwds=""
 RUN mkdir -p /etc/opendkim/keys
 COPY run healthcheck /root/
