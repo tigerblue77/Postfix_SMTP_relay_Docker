@@ -58,6 +58,34 @@ for service in $inetServices ; do
   listening "${port:-$endpoint}" || fail "postfix is not listening on $service"
 done
 
+# A listening master is not yet a relay that works: a setting smtpd rejects
+# when it reads it leaves the port open and every session killed (issue
+# wader/postfix-relay#206). Start-up asks postfix for one greeting and stops
+# the container without it; this asks again every five minutes, so a main.cf
+# changed in a running container is caught as well (issue #14). Not at every
+# check: each greeting is a connect and a disconnect in the log. "run" writes
+# the address and port it greeted, and the check refreshes the file's time
+# only on a 220, so a relay that stopped greeting fails every check until
+# docker calls it unhealthy. One try with a short read, to stay inside the
+# check's own timeout.
+greeted=/run/postfix-relay.greeted
+if [ -s "$greeted" ] && [ $(( $(date +%s) - $(stat -c %Y "$greeted") )) -ge 300 ] ; then
+  read -r address port < "$greeted"
+  greeting=$(
+    {
+      exec 3<>"/dev/tcp/$address/$port" || exit
+      read -t 2 -r line <&3
+      # QUIT, so the line left in the log is a disconnect, not a lost connection.
+      printf 'QUIT\r\n' >&3
+      echo "$line"
+    } 2> /dev/null
+  )
+  case "$greeting" in
+    220*) touch "$greeted" ;;
+    *) fail "no smtpd greeted a connection on $address:$port: postfix is listening but cannot serve" ;;
+  esac
+fi
+
 running rsyslogd || fail "rsyslogd is not running, mail is relayed unlogged"
 
 # A variable read from a <name>_FILE is only in the environment of the

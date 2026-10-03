@@ -34,7 +34,7 @@ which is where contributor branches lived then.
 | --- | --- |
 | `Dockerfile` | Debian base pin (`FROM debian:trixie-<date>-slim`), `apt-get full-upgrade` before the named packages and `apt-get autoremove --purge` after them (invariant 37), the conditional `postsrsd` install, the build-time deletion of `/etc/rsyslog.conf` and `/etc/postsrsd.secret`, the default `ENV` block, `COPY run healthcheck /root/` and then `COPY LICENSE NOTICE LICENSE-COMMERCIAL.md /root/`, the OCI `LABEL`s including `org.opencontainers.image.licenses=AGPL-3.0-only` (which `ci.yml` has to repeat, see its row), `VOLUME`, `EXPOSE 25`, `HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["/root/healthcheck"]` and `CMD ["/root/run"]`. No `ENTRYPOINT`, no `ARG`. |
 | `run` | The entrypoint. Resolves `<NAME>_FILE` secrets, turns `POSTFIX_*`, `POSTFIXMASTER_*`, `POSTMAP_*`, `OPENDKIM_*`, `POSTSRSD_*`, `RSYSLOG_*`, `SASL_Passwds` and `POSTMASTER_ADDRESS` into config, starts the daemons, asks postfix for an SMTP greeting, then runs a `pgrep`-polling supervision loop. Nearly all behaviour lives here. |
-| `healthcheck` | `pgrep`s `master`, checks a listening socket for every `inet` service in `postconf -M` — and fails when `postconf -M` does, or lists none — then `rsyslogd` always, `opendkim`/`postsrsd` whenever the environment *or the artefacts start-up left behind* say so, and `saslauthd` when `SASL_Passwds` is set. |
+| `healthcheck` | `pgrep`s `master`, checks a listening socket for every `inet` service in `postconf -M` — and fails when `postconf -M` does, or lists none — asks postfix for a greeting once the last one is five minutes old, then `rsyslogd` always, `opendkim`/`postsrsd` whenever the environment *or the artefacts start-up left behind* say so, and `saslauthd` when `SASL_Passwds` is set. |
 | `pytest.ini` | `addopts = -n auto --dist loadfile --maxprocesses 4` and one registered marker, `smoke`. No `testpaths`, no `filterwarnings`, no `xfail_strict`. |
 | `.dockerignore` | Keeps `.git`, `README.md`, `SECURITY.md`, `tests`, `pytest.ini`, `CLAUDE.md` and `.claude` out of the build context. Not `LICENSE`: the image has to carry it, so it has to reach the context. |
 | `.claude/settings.json` | Registers the `SessionStart` hook below, and pre-approves three commands, so a session runs them without stopping to ask: `pytest` and `ruff check --no-cache --select F,B tests` **exactly**, and `shellcheck` with any arguments. The first two carry no `:*` on purpose — a prefix rule pre-approves every argument list, and both have options that write where they are pointed. `git`, `docker` and `gh` were deliberately left out. The list is a standing grant to every session opened here, so adding to it is a decision to argue, not a line to append: `tests/test_claude_code_settings.py` holds it whole, and its docstring is where the argument goes. |
@@ -769,7 +769,8 @@ changing any of them.
    inside it are only in the code and are deliberate. Listening state is read
    from `/proc/net/tcp{,6}` with awk rather than by connecting, because a
    connect at the 30s interval would log a connect and a disconnect every
-   interval. The service list comes from `postconf -M` and includes `maxproc 0`
+   interval; the one connection it does make, every five minutes, is 7's.
+   The service list comes from `postconf -M` and includes `maxproc 0`
    entries, because that is a process-count limit and not an off switch — a
    genuinely disabled service is removed with `postconf -MX` and stops being
    printed. And the opendkim and postsrsd conditions fall back to on-disk
@@ -787,12 +788,13 @@ changing any of them.
    `--start-period=15s` is what keeps start-up out of the verdict.
    (commits `d22e380`, `e83e94a`)
 
-7. **The SMTP greeting probe lives in `run`, once per container — not in the
-   health check.** A running master is not a working relay: master binds the
-   port and forks an smtpd per connection, so a setting smtpd rejects when it
-   reads it leaves a container that listens, accepts and kills every session
-   while `postconf -e`, `postfix check`, `/proc` and the health check all look
-   fine. `run` therefore asks for one 220 and refuses to hand over without it.
+7. **The SMTP greeting probe lives in `run`, once per start — and in the
+   health check only once every five minutes.** A running master is not a
+   working relay: master binds the port and forks an smtpd per connection, so
+   a setting smtpd rejects when it reads it leaves a container that listens,
+   accepts and kills every session while `postconf -e`, `postfix check`,
+   `/proc` and the health check all look fine. `run` therefore asks for one
+   220 and refuses to hand over without it.
    Five things about it are load-bearing. It runs *after* rsyslogd is started,
    so postfix's own `fatal:` line naming the setting is in the container log
    above the refusal; inside `awaitGreeting` the `2> /dev/null` is on a group
@@ -815,7 +817,19 @@ changing any of them.
    `inet` service including address-bound ones — both resolve a named endpoint
    such as `submission` through `getent services`. (issue
    wader/postfix-relay#206, commit `1d6d8d3`; issue wader/postfix-relay#221,
-   commit `e9017b0`)
+   commit `e9017b0`) The health check greets too, but only when the last
+   greeting is five minutes old, because each one is a connect and a
+   disconnect in the log: at every thirty-second check that would be the
+   2880 pairs a day the start-up probe was put in `run` to avoid, and at one
+   in ten checks it is still enough to catch a `main.cf` changed in a running
+   container. `run` writes the address and port it greeted to
+   `/run/postfix-relay.greeted` on every start, since `/run` survives a
+   restart, and removes it when it had nothing to greet; the check dials what
+   that file says rather than working the address out again, and refreshes
+   the file's time only on a 220, so a relay that stopped greeting fails
+   every check until the three `--retries` make it unhealthy. One try with a
+   two-second read, where `awaitGreeting` makes five: the check's
+   `--timeout` is five seconds, and the retrying is docker's. (issue #14)
 
 8. **`run` has no `set -e`, and that is still load-bearing** — but not for the
    reason it once was. `dpkg-statoverride` is gone (see 10). What would break

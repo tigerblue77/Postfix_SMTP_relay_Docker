@@ -890,8 +890,12 @@ and sends it unsigned:
   left on disk instead, and a relay configured that way is covered like any
   other.
 
-Listening sockets are read from the kernel rather than connected to, so the
-check leaves nothing in the log.
+Listening sockets are read from the kernel rather than connected to, so most
+checks leave nothing in the log. Every five minutes the check also asks postfix
+for a greeting, the way start-up does (below), so a configuration changed in a
+running container that leaves postfix listening but unable to serve is caught
+too: that is one connect and one disconnect in the log every five minutes, and
+nothing in between.
 
 A daemon that fails to start at all stops the container instead of relaying
 mail without the signing or rewriting that was configured, and a daemon that

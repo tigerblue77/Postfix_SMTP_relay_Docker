@@ -666,6 +666,19 @@ if [ -n "$smtpdPort" ] && ! awaitGreeting "$smtpdAddress" "$smtpdPort" ; then
   exit 1
 fi
 
+# What the health check greets, and when it last worked: the address and port
+# above, with this moment as the file's time. The check greets again once that
+# is five minutes old and refreshes it only on a 220 (issue #14). Rewritten on
+# every start, since /run survives a restart, and removed when there was
+# nothing to greet, so the check never dials an address a previous start
+# chose.
+greeted=/run/postfix-relay.greeted
+if [ -n "$smtpdPort" ] ; then
+  echo "$smtpdAddress $smtpdPort" > "$greeted"
+else
+  rm -f "$greeted"
+fi
+
 # rsyslogd is the only one of them that is a job of this script -- the other
 # four daemonise, so their starter exits and they reparent to pid 1, which is
 # this script, and bash has no job to wait on. The bare "wait" this replaces
