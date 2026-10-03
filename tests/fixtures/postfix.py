@@ -10,7 +10,7 @@ import pytest
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.image import DockerImage
 
-from tests.conftest import print_log_on_failure
+from tests.conftest import container_output, print_log_on_failure
 from tests.helpers import once_across_workers, poll_until, wait_for_smtp
 
 ROOT_PATH = os.path.dirname(__file__) + '/../../'
@@ -193,7 +193,16 @@ def _start(image, network, env=None, files=None, volumes=None, ports=(25,), alia
         register(container)
 
     if wait_ready:
-        wait_for_smtp(container, port=ports[0])
+        try:
+            wait_for_smtp(container, port=ports[0])
+        except AssertionError as error:
+            # The log goes into the failure itself. It is the one record of
+            # why the relay did not come up, and a teardown print is shown only
+            # beside a failed test body: a relay started by a fixture fails as
+            # an error at setup, and pytest shows nothing printed in teardown
+            # for that (issue #22).
+            container.log_in_failure = True
+            raise AssertionError(f"{error}\n{container_output('postfix', container)}") from None
 
     return container
 
