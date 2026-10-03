@@ -736,6 +736,19 @@ environment:
   - RSYSLOG_REMOTE_TEMPLATE=RSYSLOG_ForwardFormat
 ```
 
+Messages from the `auth` and `authpriv` facilities, which is where saslauthd and
+PAM write and where a password can end up, are left out of both: they reach
+neither the container log nor the remote server. To see them while working out
+why a client's authentication fails, add them back with a file of your own (see
+below), for the container log only:
+
+```
+volumes:
+  - /your_local_path/50-auth.conf:/etc/rsyslog.d/50-auth.conf:ro
+```
+
+where `50-auth.conf` holds the single line `auth,authpriv.* /dev/stdout`.
+
 ### Advanced logging configuration
 
 If configuration via environment variables is not flexible enough it's possible to configure rsyslog directly: `.conf` files in the `/etc/rsyslog.d` directory will be [sorted alphabetically](https://www.rsyslog.com/doc/v8-stable/rainerscript/include.html#file) and included into the primary configuration.

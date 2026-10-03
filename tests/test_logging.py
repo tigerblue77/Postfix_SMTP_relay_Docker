@@ -145,6 +145,41 @@ def test_messages_are_forwarded_to_a_remote_syslog_server(postfix_factory, mailp
     assert sender.get_wrapped_container().id[:12] in received
 
 
+def test_authentication_messages_are_not_forwarded_either(postfix_factory):
+    """The two facilities kept off stdout are kept off the wire too.
+
+    Forwarding is plain UDP to a collector that is usually shared, so a line
+    too sensitive for docker logs is too sensitive for that. Each rsyslog
+    selector governs its own action, which is how the forward came to carry
+    a bare "*.*" thirteen lines below the filtered stdout one.
+    """
+    receiver = postfix_factory(alias='auth-receiver', files={
+        '/etc/rsyslog.d/10-receiver.conf': ('module(load="imudp")\n'
+                                            'input(type="imudp" port="514")\n'
+                                            '*.* /var/log/received.log\n')})
+    sender = postfix_factory(env={'RSYSLOG_REMOTE_HOST': 'auth-receiver'})
+
+    container_exec(sender, ["logger", "-p", "auth.info", "-t", "probe", "a login attempt"])
+    container_exec(sender, ["logger", "-p", "authpriv.info", "-t", "probe", "a password"])
+    container_exec(sender, ["logger", "-p", "mail.info", "-t", "probe", "a delivery"])
+
+    received = wait_for_file(receiver, '/var/log/received.log', 'a delivery')
+    assert 'a login attempt' not in received
+    assert 'a password' not in received
+
+
+def test_authentication_messages_can_be_added_back_to_stdout(postfix_factory):
+    """What the README gives a user debugging authentication: a file of
+    their own in /etc/rsyslog.d, which is included before the generated
+    actions."""
+    relay = postfix_factory(files={
+        '/etc/rsyslog.d/50-auth.conf': 'auth,authpriv.* /dev/stdout\n'})
+
+    container_exec(relay, ["logger", "-p", "authpriv.info", "-t", "probe", "shown on purpose"])
+
+    assert 'shown on purpose' in wait_for_log(relay, 'shown on purpose')
+
+
 def test_the_remote_port_and_template_can_be_changed(postfix_factory):
     relay = postfix_factory(env={
         'RSYSLOG_REMOTE_HOST': 'syslog.example',
