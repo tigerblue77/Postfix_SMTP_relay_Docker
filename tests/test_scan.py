@@ -218,14 +218,18 @@ def test_an_attempt_the_rebuild_never_used_is_given_back():
     )
 
 
-def test_the_scan_job_allows_the_longest_run_in_the_tree():
+def test_the_scan_job_allows_the_longest_wait_on_another_workflow():
     """It is the only job that spends most of its time waiting for another
-    workflow, so CLAUDE.md says its `timeout-minutes` is the longest there is.
-    That is the kind of claim a later job quietly overtakes, and the number
-    underneath it is load-bearing: the wait has a bound of its own that has to
-    stay well inside this one, because a job killed by `timeout-minutes` is
-    *cancelled* rather than failed and github's notification for a scheduled
-    run fires on failure.
+    workflow, so CLAUDE.md says its `timeout-minutes` is the longest of any
+    job that does. That is the kind of claim a later job quietly overtakes,
+    and the number underneath it is load-bearing: the wait has a bound of its
+    own that has to stay well inside this one, because a job killed by
+    `timeout-minutes` is *cancelled* rather than failed and github's
+    notification for a scheduled run fires on failure.
+
+    The branch updater's job is longer and is left out of the comparison: it
+    sleeps for a quiet period of its own choosing and waits on no workflow, so
+    its limit follows that sleep and says nothing about this wait's bound.
     """
     workflows = sorted((SCAN.parent).glob("*.yml"))
     timeouts = {}
@@ -237,10 +241,14 @@ def test_the_scan_job_allows_the_longest_run_in_the_tree():
     assert not missing, f"jobs with no timeout-minutes, which default to six hours: {missing}"
 
     scan = timeouts["scan.yml:Image Scan"]
-    longer = {n: v for n, v in timeouts.items() if v >= scan and n != "scan.yml:Image Scan"}
+    longer = {
+        n: v for n, v in timeouts.items()
+        if v >= scan and n != "scan.yml:Image Scan"
+        and not n.startswith("auto_update_pull_request_branches.yml:")
+    }
     assert not longer, (
-        f"CLAUDE.md says the scan job's timeout is the longest in the tree; "
-        f"these reach or pass it: {longer}"
+        f"CLAUDE.md says the scan job's timeout is the longest of the jobs "
+        f"that wait on another workflow; these reach or pass it: {longer}"
     )
 
 

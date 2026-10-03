@@ -55,9 +55,9 @@ which is where contributor branches lived then.
 | `.github/workflows/test.yml` | `name: test`. Four jobs: **Event File**, **Pytest**, **Pytest (arm64)** and **Pytest (arm/v7, emulated)**. Spelled out rather than written as a matrix; the file says why. |
 | `.github/workflows/test-results.yml` | On `workflow_run` of `test`, downloads the junit artifacts and publishes them as the **Test Results** check. |
 | `.github/workflows/lint.yml` | `name: lint`. Two jobs, each pinned and checksummed: `shellcheck`, displayed as **ShellCheck**, runs `shellcheck -S error` over `run`, `healthcheck`, the session-start hook and the sign-off check — the only threshold the image scripts pass; `ruff`, displayed as **Ruff**, runs `ruff check --no-cache --select F,B tests` — pyflakes and bugbear over all the python in the tree. The only two linters there are, and neither reads a config file. |
-| `.github/workflows/scan.yml` | `name: scan`. One job, `trivy`, displayed as **Image Scan**: on a daily `schedule:` and on `workflow_dispatch`, downloads a pinned, checksummed trivy and scans the *published* image at `--ignore-unfixed --severity HIGH,CRITICAL`. The only workflow with a `schedule:`, and the only one that reports nothing on a pull request at all — `test-results.yml` has no `pull_request` trigger either, but its `workflow_run` on `test` puts a check there anyway. Files one issue when it finds something and closes it when it stops, which is the only thing in the tree that writes to the tracker; each of the first `MAX_REBUILD_ATTEMPTS` runs that finds the issue still open also dispatches **ci.yml** on `master` with `no-cache` set, *waits for that run* and re-scans what it published, so the run that applied the remedy is the one that closes the issue rather than the next morning's — see invariant 36. The waiting is why its `timeout-minutes` is the longest in the tree, and why the wait has a bound of its own well inside it: a job killed by `timeout-minutes` is *cancelled* rather than failed, and github's notification for a scheduled run fires on failure. |
+| `.github/workflows/scan.yml` | `name: scan`. One job, `trivy`, displayed as **Image Scan**: on a daily `schedule:` and on `workflow_dispatch`, downloads a pinned, checksummed trivy and scans the *published* image at `--ignore-unfixed --severity HIGH,CRITICAL`. The only workflow with a `schedule:`, and the only one that reports nothing on a pull request at all — `test-results.yml` has no `pull_request` trigger either, but its `workflow_run` on `test` puts a check there anyway. Files one issue when it finds something and closes it when it stops, which is the only thing in the tree that writes to the tracker; each of the first `MAX_REBUILD_ATTEMPTS` runs that finds the issue still open also dispatches **ci.yml** on `master` with `no-cache` set, *waits for that run* and re-scans what it published, so the run that applied the remedy is the one that closes the issue rather than the next morning's — see invariant 36. The waiting is why its `timeout-minutes` is the longest of any job that waits on another workflow — the branch updater's is longer, but it sleeps on a clock and waits on no workflow — and why the wait has a bound of its own well inside it: a job killed by `timeout-minutes` is *cancelled* rather than failed, and github's notification for a scheduled run fires on failure. |
 | `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates, by squash because `master` refuses a merge commit. Its header comment records the check names that *exist* and what it needs from the repository settings and the ruleset; which of them are *required* is the ruleset below. |
-| `.github/workflows/auto_update_pull_request_branches.yml` | On every push to `master`, hourly, and on `workflow_dispatch`: rebases every open, conflict-free, non-draft pull request that `master` left behind, so that the checks a reviewer reads describe the `master` it would land on. Best effort, and not required: "Require branches to be up to date" is off, and Dependabot's pull requests are left to Dependabot, since a rebase pushed by anyone else strips the signature the auto-merge checks. Its header says why it needs a GitHub App or a personal access token rather than the `GITHUB_TOKEN`. |
+| `.github/workflows/auto_update_pull_request_branches.yml` | On every push to `master`, and on `workflow_dispatch`; no `schedule:`. A push starts a run whose first step sleeps `QUIET_PERIOD_MINUTES` (an hour), and the next push cancels it, so only the run that follows the last push of a series wakes up and rebases every open, conflict-free, non-draft pull request that `master` left behind, so that the checks a reviewer reads describe the `master` it would land on. A pull request that conflicts gets one comment, found again by a marker so that it is written once and deleted when the conflict is gone. A run started by hand does not wait. Best effort, and not required: "Require branches to be up to date" is off, and Dependabot's pull requests are left to Dependabot, since a rebase pushed by anyone else strips the signature the auto-merge checks. Its header says why it needs a GitHub App or a personal access token rather than the `GITHUB_TOKEN`, why the conflict comment has to come from the App, and what the sleep costs. |
 | `.github/workflows/sign_off.yml` | `name: sign-off`. One job, displayed as **Sign-off**, on `pull_request` only: checks out with `fetch-depth: 0` and runs `.github/check_sign_off.sh` over the pull request's base and head. Not on `master`, whose squashes no longer carry the branch's trailers and whose older history is unsigned, and not on `workflow_dispatch`, which has no range. |
 | `.github/check_sign_off.sh` | The decision the **Sign-off** check reports: every non-merge commit in `base..head` carries a well-formed `Signed-off-by` read through git's own trailer parser, every commit the agent authored carries the maintainer's sign-off, so the tool never certifies its own work, and no commit names the agent as a co-author of somebody else's work. Fails closed — an empty or unreadable range is a refusal, not a pass — and is the one script in the tree under `set -e`, for that reason. |
 | `LICENSE` | The GNU Affero General Public License v3.0 text, unmodified. The project is `AGPL-3.0-only`; it was MIT until the commit that added `NOTICE`. |
@@ -437,24 +437,35 @@ Notes a contributor will hit:
   Dependabot's own, and every pull request after a Dependabot merge — would be
   blocked rather than behind. The merge queue, GitHub's own answer, needs a
   repository owned by an organisation, and auto-merge does not update a branch,
-  so `auto_update_pull_request_branches.yml` does it: after every push to
-  `master` and hourly, it rebases each conflict-free, non-draft pull request
-  left behind, falling back to a merge commit on the branch — which the squash
-  then discards. The hourly run is for the one merge it never hears of, the
-  Dependabot auto-merge's, made with the `GITHUB_TOKEN`, whose pushes start no
-  workflow. It leaves Dependabot's own pull requests to Dependabot: a rebase
-  pushed by anyone else replaces the commit Dependabot signed, and
-  `dependabot/fetch-metadata` in `dependabot-auto-merge.yml` then refuses it,
-  so the merge is never queued. It needs a GitHub App or a personal access
-  token, because an update the `GITHUB_TOKEN` pushes leaves the checks
+  so `auto_update_pull_request_branches.yml` does it: every push to `master`
+  starts a run that sleeps for a quiet hour, which the next push cancels, so a
+  series of merges is followed by one pass and not one per merge — each pass
+  being a force-push, and a notification, per pull request it updates. The
+  pass rebases each conflict-free, non-draft pull request left behind, falling
+  back to a merge commit on the branch — which the squash then discards. A
+  pull request that conflicts is left to its author, and told so once, in a
+  comment the pass deletes when the conflict is gone; it has to be the GitHub
+  App that writes it, since GitHub does not email anyone about their own
+  activity. There is no schedule: it was hourly until issue #89, there for the
+  one merge the push trigger never hears of, the Dependabot auto-merge's,
+  made with the `GITHUB_TOKEN`, whose pushes start no workflow, and GitHub,
+  which runs a schedule on a best-effort basis, started it every few hours
+  instead. What such a merge leaves behind is now brought level after the next
+  push to `master` made any other way, and nothing is blocked meanwhile,
+  strict mode being off. It leaves Dependabot's own pull requests to
+  Dependabot: a rebase pushed by anyone else replaces the commit Dependabot
+  signed, and `dependabot/fetch-metadata` in `dependabot-auto-merge.yml` then
+  refuses it, so the merge is never queued. It needs a GitHub App or a personal
+  access token, because an update the `GITHUB_TOKEN` pushes leaves the checks
   waiting for someone to approve the run; the header says which variable and
   secrets it reads, and the run fails saying so while none is set.
   What strict mode bought, a pull request tested against the `master` it lands
   on, is what the updater gives wherever it can reach, and is paid for after
   the merge everywhere else: **Verify Published Image** runs on every push to
   `master`, and `latest` does not move until it passes. `tests/test_ruleset.py`
-  fails if strict mode is turned on, if the updater loses its schedule, or if
-  it pushes to a Dependabot pull request.
+  fails if strict mode is turned on, if the updater gains a schedule or loses
+  its wait, if it announces a conflict twice or leaves the announcement of a
+  resolved one behind, or if it pushes to a Dependabot pull request.
 - **The pytest step has `timeout-minutes: 10`** inside a 20-minute job (25/45
   for the emulated one). The job timeouts are backstops: a cancelled job skips
   the upload step, so the bound expected to fire is the step's. Every wait in
