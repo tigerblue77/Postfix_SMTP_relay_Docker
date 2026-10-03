@@ -151,9 +151,10 @@ def test_branches_are_not_required_to_be_up_to_date():
     on, each merge leaves every other open pull request *blocked* until its
     branch is updated, and what updates them is best effort: the branch
     updater leaves alone a pull request that conflicts, one from a fork, a
-    draft and Dependabot's own, and it only hears of a Dependabot merge on its
-    next scheduled run, a push made with the `GITHUB_TOKEN` starting no
-    workflow. Each of those would turn from behind into blocked. What the
+    draft and Dependabot's own, and it only hears of a Dependabot merge on the
+    next push to master made any other way, a push made with the
+    `GITHUB_TOKEN` starting no workflow. Each of those would turn from behind
+    into blocked. What the
     setting bought, a pull request tested against the master it lands on, is
     what the updater gives wherever it can reach, and is paid for after the
     merge everywhere else: **Verify Published Image** runs on every push to
@@ -163,64 +164,149 @@ def test_branches_are_not_required_to_be_up_to_date():
     assert checks[0]["parameters"]["strict_required_status_checks_policy"] is False, (
         "requiring branches to be up to date blocks every pull request the "
         "branch updater cannot reach, and after a Dependabot merge all of them "
-        "until its next scheduled run"
+        "until the next push to master made any other way"
     )
 
 
-def test_the_branch_updater_runs_after_every_merge_and_hourly():
-    """A merge made in the `GITHUB_TOKEN`'s name -- every one the Dependabot
-    auto-merge makes -- starts no workflow, so the push trigger alone leaves
-    what such a merge left behind until somebody else merges. The schedule is
-    what reaches those.
+def test_the_branch_updater_waits_for_master_to_stay_quiet():
+    """A pass after every merge force-pushes every pull request it updates,
+    and each force-push is a notification, so a series of merges used to cost
+    one round of both per merge. The updater now starts a run on every push to
+    master, and the run sleeps for a quiet period before it touches anything:
+    the next push cancels it, so only the run that follows the last push of a
+    series ever wakes up.
+
+    That holds only with all of its parts, and each fails silently without the
+    others. A `schedule:` starts a pass that no push cancels, and is what this
+    replaced. A concurrency group that queues instead of cancelling leaves the
+    sleeper to wake up behind the run that was meant to replace it. The wait
+    has to come before the step that mints the App's installation token, which
+    lives an hour. The job's timeout has to outlast the wait, or the pass
+    never happens. And the wait is for a push only: a run started by hand is
+    there to act now.
+
+    A merge made in the `GITHUB_TOKEN`'s name -- every one the Dependabot
+    auto-merge makes -- starts no workflow, so it starts no wait either; what
+    it leaves behind is brought level after the next push made any other way,
+    and nothing is blocked meanwhile, since branches are not required to be up
+    to date.
     """
-    triggers = yaml.safe_load(UPDATER.read_text())[True]
+    workflow = yaml.safe_load(UPDATER.read_text())
+    triggers = workflow[True]
     assert triggers["push"]["branches"] == ["master"], (
-        f"{UPDATER.name} has to run on every push to master, got {triggers}"
+        f"{UPDATER.name} has to start its wait on every push to master, got {triggers}"
     )
-    assert triggers.get("schedule"), (
-        f"{UPDATER.name} has to run on a schedule too, or nothing updates the "
-        "pull requests a Dependabot merge leaves behind"
+    assert "workflow_dispatch" in triggers, (
+        f"{UPDATER.name} has to be startable by hand, without the wait"
+    )
+    assert "schedule" not in triggers, (
+        f"{UPDATER.name} has a schedule: a scheduled run is a pass no push "
+        "cancels, which is the one pass per merge the wait exists to remove"
+    )
+    assert workflow["concurrency"]["cancel-in-progress"] is True, (
+        "the next push has to cancel a run that is still asleep, or the wait "
+        "is not a wait for master to stay quiet"
     )
 
+    job = workflow["jobs"]["update-pull-request-branches"]
+    quiet_period = int(job["env"]["QUIET_PERIOD_MINUTES"])
+    assert quiet_period > 0
+    assert job["timeout-minutes"] > quiet_period, (
+        f"the job times out after {job['timeout-minutes']} minutes, which is "
+        f"not past the {quiet_period}-minute wait it starts with"
+    )
+
+    steps = job["steps"]
+    wait = steps[0]
+    assert wait["name"].startswith("Wait for master to stay quiet"), (
+        f"the wait has to be the first step, before the token is minted, got {wait['name']!r}"
+    )
+    assert wait["if"] == "github.event_name == 'push'", (
+        "the wait is for a push only: a run started by hand is there to act now"
+    )
+    assert "QUIET_PERIOD_MINUTES" in wait["run"] and "sleep" in wait["run"], (
+        "the first step has to sleep for QUIET_PERIOD_MINUTES"
+    )
+    assert [s.get("id") for s in steps].index("app-token") > 0, (
+        "the App token has to be minted after the wait, not before it"
+    )
+
+
+# What the workflow writes first in a comment that announces a conflict, and
+# what a later pass searches for. Written here, not read from the workflow, so
+# that changing it fails this module: a marker that moved would orphan every
+# comment already posted, and the next pass would announce each conflict again
+CONFLICT_MARKER = "<!-- auto-update-pull-request-branches: conflict -->"
 
 GH_STUB = r"""#!/bin/bash
-# Pull request 11 is Dependabot's and 12 a person's, both mergeable and both
-# two commits behind master. --jq is not applied: each answer is already what
-# that filter would extract. Anything else is refused, so a call this stub was
-# not written for fails loudly instead of answering empty
+# Six pull requests, all mergeable except where said, and all two commits
+# behind master. 11 is Dependabot's and 12 a person's, with no comment. 13
+# conflicts and has never been announced, 14 conflicts and already carries the
+# announcement, 15 is conflict-free again and still carries one, next to a
+# person's own comment, and 16 conflicts but its comments cannot be read.
+# --jq is not applied: each answer is already what that filter would extract.
+# Anything else is refused, so a call this stub was not written for fails
+# loudly instead of answering empty -- 11's comments included, which nothing
+# may ask for
 set -uo pipefail
 printf '%s\n' "$*" >> "$GH_CALL_LOG"
 case "$1 ${2:-}" in
   "pr list")
-    echo '[{"number":11,"isDraft":false},{"number":12,"isDraft":false}]' ;;
+    echo '[{"number":11,"isDraft":false},{"number":12,"isDraft":false},{"number":13,"isDraft":false},{"number":14,"isDraft":false},{"number":15,"isDraft":false},{"number":16,"isDraft":false}]' ;;
   "api repos/example/repository/commits/master")
     echo 'master-sha' ;;
   "api repos/example/repository/pulls/11")
     echo '{"user":{"login":"dependabot[bot]"},"mergeable":true,"head":{"sha":"dependabot-sha"},"node_id":"DEPENDABOT_NODE"}' ;;
   "api repos/example/repository/pulls/12")
     echo '{"user":{"login":"tigerblue77"},"mergeable":true,"head":{"sha":"person-sha"},"node_id":"PERSON_NODE"}' ;;
+  "api repos/example/repository/pulls/13")
+    echo '{"user":{"login":"tigerblue77"},"mergeable":false,"head":{"sha":"conflict-sha"},"node_id":"CONFLICT_NODE"}' ;;
+  "api repos/example/repository/pulls/14")
+    echo '{"user":{"login":"tigerblue77"},"mergeable":false,"head":{"sha":"announced-sha"},"node_id":"ANNOUNCED_NODE"}' ;;
+  "api repos/example/repository/pulls/15")
+    echo '{"user":{"login":"tigerblue77"},"mergeable":true,"head":{"sha":"resolved-sha"},"node_id":"RESOLVED_NODE"}' ;;
+  "api repos/example/repository/pulls/16")
+    echo '{"user":{"login":"tigerblue77"},"mergeable":false,"head":{"sha":"unreadable-sha"},"node_id":"UNREADABLE_NODE"}' ;;
   "api repos/example/repository/compare/"*)
     echo '2' ;;
   "api graphql")
     echo '{"data":{"updatePullRequestBranch":{"pullRequest":{"headRefOid":"rebased-sha"}}}}' ;;
+  "api repos/example/repository/issues/"*"/comments")
+    number="${2#repos/example/repository/issues/}"
+    number="${number%/comments}"
+    case " $* " in
+      *" --raw-field "*)
+        echo '{}' ;;
+      *)
+        case "$number" in
+          12|13)
+            echo '[]' ;;
+          14)
+            echo '[{"id":1401,"body":"@MARKER@\n\nan earlier pass wrote this"}]' ;;
+          15)
+            echo '[{"id":1501,"body":"@MARKER@\n\nan earlier pass wrote this"},{"id":1502,"body":"a person wrote this"}]' ;;
+          16)
+            echo "the comments cannot be read" >&2
+            exit 1 ;;
+          *)
+            echo "unexpected comments read: $*" >&2
+            exit 64 ;;
+        esac ;;
+    esac ;;
+  "api --method")
+    ;;
   *)
     echo "unexpected gh call: $*" >&2
     exit 64 ;;
 esac
-"""
+""".replace("@MARKER@", CONFLICT_MARKER)
 
 
-def test_the_branch_updater_leaves_dependabot_pull_requests_to_dependabot(tmp_path):
-    """A rebase pushed by anyone but Dependabot replaces the commit Dependabot
-    signed, and `dependabot/fetch-metadata` in `dependabot-auto-merge.yml`
-    refuses the result, so an update whose merge was not queued yet never gets
-    queued -- which is not a hypothesis: an updater without this filter left
-    every open Dependabot pull request it reached unmerged.
+def run_updater_step(tmp_path):
+    """Run the updater's step as written, over the pull requests GH_STUB
+    describes, against a stubbed `gh` that records its calls.
 
-    The step runs here as written, over two pull requests equally far behind
-    master, against a stubbed `gh` that records its calls: the one Dependabot
-    opened must see no update at all, and the other must still be rebased, so
-    that a filter skipping everything fails this too.
+    Returns the finished process, what `gh` was asked, and the step summary.
     """
     if shutil.which("jq") is None:
         pytest.skip("the step reads every answer with jq, which is not installed")
@@ -235,6 +321,7 @@ def test_the_branch_updater_leaves_dependabot_pull_requests_to_dependabot(tmp_pa
     gh.chmod(0o755)
     calls = tmp_path / "gh_calls.log"
     calls.touch()
+    summary = tmp_path / "summary"
 
     env = {
         **os.environ,
@@ -244,17 +331,83 @@ def test_the_branch_updater_leaves_dependabot_pull_requests_to_dependabot(tmp_pa
         "UPDATING_AS": "the GitHub App",
         "REPOSITORY": "example/repository",
         "FALL_BACK_TO_MERGE": "true",
-        "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
+        "GITHUB_STEP_SUMMARY": str(summary),
     }
     result = subprocess.run(["bash", str(script)], env=env, capture_output=True,
                             text=True, timeout=60)
     assert result.returncode == 0, (
         f"the updater's step failed against the stubbed API:\n{result.stdout}{result.stderr}"
     )
-    logged = calls.read_text()
+    return result, calls.read_text(), summary.read_text()
+
+
+def test_the_branch_updater_leaves_dependabot_pull_requests_to_dependabot(tmp_path):
+    """A rebase pushed by anyone but Dependabot replaces the commit Dependabot
+    signed, and `dependabot/fetch-metadata` in `dependabot-auto-merge.yml`
+    refuses the result, so an update whose merge was not queued yet never gets
+    queued -- which is not a hypothesis: an updater without this filter left
+    every open Dependabot pull request it reached unmerged.
+
+    The step runs here as written, over pull requests equally far behind
+    master, against a stubbed `gh` that records its calls: the one Dependabot
+    opened must see no update at all, and the other must still be rebased, so
+    that a filter skipping everything fails this too. Nor may the updater so
+    much as read or write a comment there: an announcement on Dependabot's
+    pull request is one more thing it would be pushing into a branch that is
+    Dependabot's to keep.
+    """
+    result, logged, _ = run_updater_step(tmp_path)
     assert "pullRequestId=DEPENDABOT_NODE" not in logged, (
         f"the updater pushed to Dependabot's pull request:\n{result.stdout}"
     )
+    assert "issues/11/" not in logged, (
+        f"the updater touched the comments of Dependabot's pull request:\n{logged}"
+    )
     assert "pullRequestId=PERSON_NODE" in logged, (
         f"the updater skipped a person's pull request as well:\n{result.stdout}"
+    )
+
+
+def test_the_branch_updater_announces_a_conflict_once_and_forgets_it_when_it_is_over(tmp_path):
+    """A pull request that conflicts is left to its author, and the comment is
+    the only way the author hears of it: a line in a run log is read by nobody.
+    The comment carries a marker, which is the whole of the bookkeeping. A
+    pass writes one where there is none, and a pass that finds the marker
+    already there writes nothing, or the author would be emailed again on every
+    push to master for as long as the conflict lasts. A pass that finds the pull
+    request conflict-free again deletes it, and only it, so that the next
+    conflict is announced in turn and a person's own comment stays.
+
+    A comment that cannot be read is a warning and no more. The pull requests
+    behind it still have to be walked, and writing a second announcement on a
+    pull request whose first one cannot be seen is exactly the duplicate the
+    marker is there to prevent.
+
+    The step runs here as written, against the stubbed `gh` of the test above,
+    which also says what each pull request's comments hold.
+    """
+    result, logged, summary = run_updater_step(tmp_path)
+    posts = [line for line in logged.splitlines() if "/comments --raw-field body=" in line]
+    assert len(posts) == 1 and "issues/13/comments" in posts[0], (
+        f"expected one announcement, on the conflicting pull request 13 alone:\n{logged}"
+    )
+    assert f"body={CONFLICT_MARKER}" in posts[0], (
+        f"the announcement does not start with the marker a later pass searches for:\n{posts[0]}"
+    )
+    assert "issues/14/comments --raw-field" not in logged, (
+        f"a conflict that was already announced was announced again:\n{logged}"
+    )
+    assert "issues/16/comments --raw-field" not in logged, (
+        f"a conflict was announced on a pull request whose comments could not be read:\n{logged}"
+    )
+    assert "::warning::Pull request #16" in result.stdout, (
+        f"comments that cannot be read went unreported:\n{result.stdout}"
+    )
+    deletions = [line for line in logged.splitlines() if "--method DELETE" in line]
+    assert deletions == ["api --method DELETE repos/example/repository/issues/comments/1501"], (
+        f"expected the marked comment of the resolved pull request 15 to be "
+        f"deleted, and nothing else:\n{logged}"
+    )
+    assert summary.strip() == "Updated 2 pull request(s), announced 1 conflict(s).", (
+        f"the step summary does not say what the pass did:\n{summary}"
     )
