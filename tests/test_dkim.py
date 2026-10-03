@@ -334,6 +334,24 @@ def test_a_subdomain_is_not_signed_by_its_parent_domain(signing, mailpit):
     assert 'dkim-signature' not in mailpit.wait_for_message('from a subdomain')['headers']
 
 
+def test_the_signing_domain_is_the_from_header_s_not_the_envelope_s(signing, mailpit):
+    """What DMARC aligns on, and what the README says OPENDKIM_DOMAINS holds.
+
+    opendkim picks the key by the From: address. A bounce address elsewhere
+    -- a mailing list's, or one SRS rewrote -- does not stop a message whose
+    From: is in the list from being signed, and d= names the From: domain.
+    Every other signing test here sends with the two agreeing, so none of
+    them could tell which one was read.
+    """
+    send_raw(signing, "Subject: from header decides\r\n"
+                      "From: sender@example.com\r\n"
+                      "To: receiver@example.com\r\n\r\nbody\r\n",
+             sender='bounces@other.example')
+
+    signature = mailpit.wait_for_message('from header decides')['headers']['dkim-signature'][0]
+    assert 'd=example.com' in signature
+
+
 def test_the_signature_covers_the_from_header(signing, mailpit):
     """The point of DKIM: the sender a receiver shows cannot be swapped out.
 
