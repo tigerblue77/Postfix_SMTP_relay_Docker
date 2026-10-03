@@ -8,7 +8,7 @@ import time
 from testcontainers.core.container import DockerContainer
 
 from tests.helpers import (container_log, exit_code_within,
-                           healthcheck_after_stopping, wait_for_log)
+                           healthcheck_after_stopping, poll_until, wait_for_log)
 
 HEALTHCHECK = "/root/healthcheck"
 SUBMISSION = "submission/inet=submission inet n - y - - smtpd"
@@ -24,8 +24,11 @@ def start_relay(image, **env):
     container.start()
     # Postfix is the last daemon "run" starts, so a passing health check is
     # what "started" means here, and every test below breaks a relay that was
-    # known to be up.
-    run_healthcheck(container, expected=0, timeout=30)
+    # known to be up. Asserted rather than assumed: a relay that never came up
+    # would otherwise reach a test that stops a daemon it never had, and pass
+    # on the verdict it already gave (issue #22).
+    exit_code, output = run_healthcheck(container, expected=0, timeout=30)
+    assert exit_code == 0, output
 
     return container
 
@@ -90,6 +93,40 @@ def test_configured_but_unopened_port_is_unhealthy(postfix_image):
         container.exec("postfix reload")
 
         assert run_healthcheck(container, expected=0)[0] == 0
+    finally:
+        container.stop()
+
+def test_a_master_cf_postconf_cannot_read_is_unhealthy(postfix_image):
+    """The ports come from master.cf through postconf, which the check used to
+    run inside a command substitution: a postconf that failed printed nothing,
+    left no port to check, and the relay was reported healthy. master goes on
+    running with what it loaded, so this is what a master.cf edited in a
+    running container into something postfix cannot parse looks like
+    (issue #12).
+    """
+    container = start_relay(postfix_image)
+
+    try:
+        container.exec(["sh", "-c", "echo 'not a service line' >> /etc/postfix/master.cf"])
+
+        exit_code, output = run_healthcheck(container, expected=1)
+        assert exit_code == 1
+        assert 'no port was checked' in output
+    finally:
+        container.stop()
+
+def test_a_relay_with_no_inet_service_is_unhealthy(postfix_image):
+    """With no inet service left in master.cf there is no port to check, and
+    nothing a client can reach: the loop over the ports used to find nothing
+    wrong with that (issue #12)."""
+    container = start_relay(postfix_image)
+
+    try:
+        container.exec(["postconf", "-M", "-X", "smtp/inet"])
+
+        exit_code, output = run_healthcheck(container, expected=1)
+        assert exit_code == 1
+        assert 'no inet service' in output
     finally:
         container.stop()
 
@@ -260,11 +297,22 @@ def test_an_endpoint_given_as_a_number_is_checked(relay_factory):
     assert run_healthcheck(relay, expected=0)[0] == 0
 
 
-def test_the_check_writes_nothing_to_the_log(relay_factory):
+GREETED = "/run/postfix-relay.greeted"
+
+
+def age_the_last_greeting(relay):
+    """Make the check's last greeting six minutes old, past its five."""
+    exit_code, output = relay.exec(["touch", "-d", "6 minutes ago", GREETED])
+    assert exit_code == 0, output.decode()
+
+
+def test_the_check_writes_nothing_to_the_log_between_greetings(relay_factory):
     """It runs every thirty seconds for the life of the container.
 
     Reading the listening sockets from the kernel rather than connecting to
     them is what keeps a connect and a disconnect out of the log each time.
+    It does greet postfix, but once every five minutes, and "run" has just
+    done so at start-up, so none of these checks is due to (issue #14).
     """
     relay = relay_factory()
     # Start-up is not over when the relay answers, which is the moment the
@@ -282,3 +330,53 @@ def test_the_check_writes_nothing_to_the_log(relay_factory):
         assert run_healthcheck(relay, expected=0)[0] == 0
 
     assert container_log(relay) == before
+
+
+def test_the_check_greets_postfix_once_its_last_greeting_is_five_minutes_old(
+        relay_factory):
+    """One connect and one disconnect every five minutes, and nothing between.
+
+    The greeting is what tells a relay that works from one that only listens
+    (issue wader/postfix-relay#206). Start-up asks for one; the check asks
+    again when the last is five minutes old, and dates its own success, so the
+    next one is five minutes away again (issue #14).
+    """
+    relay = relay_factory()
+    before = wait_for_log(relay, "disconnect from localhost")
+    age_the_last_greeting(relay)
+
+    assert run_healthcheck(relay, expected=0)[0] == 0
+    after = poll_until(
+        lambda: container_log(relay).count("disconnect from localhost") == 2
+        and container_log(relay),
+        description="the check's greeting to be logged")
+
+    added = after[len(before):].splitlines()
+    assert len(added) == 2, added
+    assert 'connect from localhost' in added[0]
+    assert 'disconnect from localhost' in added[1]
+
+    assert run_healthcheck(relay, expected=0)[0] == 0
+    assert container_log(relay) == after
+
+
+def test_a_relay_that_stopped_greeting_after_start_up_is_unhealthy(relay_factory):
+    """What start-up refuses, caught in a relay that is already running.
+
+    An empty error_notice_recipient is a setting smtpd dies on when it reads
+    it, which leaves master listening and every session killed. Written into a
+    running relay and reloaded, it gets past start-up's greeting, and the
+    sockets alone still look fine; the next greeting does not (issue #14).
+    """
+    relay = relay_factory()
+    for command in (["postconf", "-e", "error_notice_recipient="], ["postfix", "reload"]):
+        exit_code, output = relay.exec(command)
+        assert exit_code == 0, output.decode()
+
+    assert run_healthcheck(relay, expected=0)[0] == 0
+
+    age_the_last_greeting(relay)
+    exit_code, output = run_healthcheck(relay, expected=1)
+
+    assert exit_code == 1
+    assert 'no smtpd greeted a connection' in output

@@ -10,15 +10,23 @@ unless they ask for more (issue wader/postfix-relay#58).
 
 import re
 
-from tests.helpers import (container_exec, container_log, file_missing, restart,
-                           send, wait_for_file, wait_for_log)
+from tests.helpers import (container_exec, container_log, container_stderr,
+                           exit_code_within, file_missing, process_running,
+                           restart, send, wait_for_file, wait_for_log, wait_for_log_line)
 
-MAIL_LOG_LINE = re.compile(r'^postfix/\w+\[\d+\]: ')
-TIMESTAMPED_MAIL_LOG_LINE = re.compile(r'^\d{4}-\d{2}-\d{2}T[\d:.+]+ \S+ postfix/\w+\[\d+\]: ')
+# "postfix-script" is one of the programs that log, hyphen and all.
+MAIL_LOG_LINE = re.compile(r'^postfix/[\w-]+\[\d+\]: ')
+TIMESTAMPED_MAIL_LOG_LINE = re.compile(
+    r'^\d{4}-\d{2}-\d{2}T[\d:.+]+ \S+ postfix/[\w-]+\[\d+\]: ')
+
+# The init script says what it is doing without ending the line, so the first
+# thing postfix logs while it starts or stops follows that text on the same one.
+INIT_SCRIPT_TEXT = re.compile(r'^(Starting|Stopping) the Postfix mail system: /etc/postfix')
 
 
 def postfix_log_lines(container):
-    return [line for line in container_log(container).splitlines() if 'postfix/' in line]
+    lines = (INIT_SCRIPT_TEXT.sub('', line) for line in container_log(container).splitlines())
+    return [line for line in lines if 'postfix/' in line]
 
 
 def test_container_log_has_no_timestamps_by_default(postfix, mailpit, smtp):
@@ -220,6 +228,128 @@ def test_a_file_log_is_written_beside_the_container_log_and_not_instead_of_it(
     assert postfix_log_lines(relay)
 
 
+def test_a_file_log_truncated_in_place_is_written_again_from_its_start(
+        postfix_factory, mailpit):
+    """What copytruncate does to the file, done by hand.
+
+    The container rotates nothing, so the README has the file rotated from the
+    host with copytruncate, which works only if rsyslogd appends. One that
+    wrote at the offset it had reached would put the next line after a hole as
+    long as everything truncated, and the rotation would free nothing.
+    Issue #30.
+    """
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes'})
+
+    send(relay, subject='before the truncation')
+    mailpit.wait_for_message('before the truncation')
+    wait_for_file(relay, '/var/log/mail.log', 'status=sent')
+
+    container_exec(relay, ["truncate", "-s", "0", "/var/log/mail.log"])
+
+    send(relay, subject='after the truncation')
+    mailpit.wait_for_message('after the truncation')
+    logged = wait_for_file(relay, '/var/log/mail.log', 'status=sent')
+
+    assert '\0' not in logged
+    assert logged.count('status=sent') == 1
+
+
+# One logger process sends every line back to back, so rsyslogd takes them in
+# batches, which is the worst case for the size of the file (see below).
+FILLER = ('for i in $(seq 1 1000) ; do '
+          'echo "filler line $i, to take the file log past its limit" ; done > /tmp/filler ; '
+          'logger -p mail.info -f /tmp/filler')
+
+# rsyslogd looks at the size of the file when it writes its buffer out, not at
+# every line: omfile's ioBufferSize, 4096 bytes unless set. A file that is
+# under the limit before a write can therefore be over it by up to one buffer
+# afterwards. Lines that arrive one at a time hide that, and a loaded runner
+# does not.
+IO_BUFFER = 4096
+
+
+def test_the_file_log_is_capped_and_keeps_the_file_before(postfix_factory):
+    """Nothing else in the container rotates the file, so it is bounded by
+    RSYSLOG_LOG_FILE_MAX_SIZE: at the limit it becomes mail.log.1, replacing
+    the one before, and a new mail.log is started (issue #30). A small limit
+    here, so a thousand lines, fifty kilobytes, go past it many times over.
+    """
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes',
+                                 'RSYSLOG_LOG_FILE_MAX_SIZE': '4k'})
+
+    container_exec(relay, ["sh", "-c", FILLER])
+    wait_for_file(relay, '/var/log/mail.log', 'filler line 1000')
+
+    sizes = container_exec(relay, ["stat", "-c", "%n %s",
+                                   "/var/log/mail.log", "/var/log/mail.log.1"])
+    # Over the limit by up to one buffer, as IO_BUFFER says, and no more: an
+    # unrotated file would hold all fifty kilobytes.
+    for line in sizes.splitlines():
+        name, size = line.split()
+        assert int(size) <= 4096 + IO_BUFFER, sizes
+    assert 'filler line' in container_exec(relay, ["cat", "/var/log/mail.log.1"])
+
+
+def test_the_file_log_is_capped_at_100m_unless_told_otherwise(postfix_factory):
+    """The limit is on by default, so that the file log the README shows how
+    to mount cannot fill the host's disk unattended (issue #30)."""
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes'})
+
+    config = container_exec(relay, ["cat", "/etc/rsyslog.conf"])
+
+    assert 'rotation.sizeLimit="100m"' in config
+
+
+def test_an_empty_limit_leaves_the_file_log_unbounded(postfix_factory):
+    """For whoever already rotates the file from the host and wants nothing
+    to move it under them."""
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes',
+                                 'RSYSLOG_LOG_FILE_MAX_SIZE': ''})
+
+    config = container_exec(relay, ["cat", "/etc/rsyslog.conf"])
+
+    assert 'mail.* -/var/log/mail.log' in config
+    assert 'sizeLimit' not in config
+
+
+def test_a_limit_rsyslogd_cannot_read_stops_the_container(postfix_factory):
+    """rsyslogd reads a size it does not understand as no limit at all, which
+    is the one thing the setting is there to prevent, so it is refused before
+    anything starts."""
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes',
+                                 'RSYSLOG_LOG_FILE_MAX_SIZE': '100 MB'},
+                            wait_ready=False)
+
+    assert exit_code_within(relay, seconds=20) == 1
+    assert "RSYSLOG_LOG_FILE_MAX_SIZE is '100 MB'" in container_stderr(relay)
+
+
+def test_a_renamed_file_log_is_reopened_when_rsyslogd_is_sent_hup(postfix_factory, mailpit):
+    """The README's other rotation: rename, then "pkill -HUP rsyslogd".
+
+    rsyslogd goes on writing into a renamed file until it is told to reopen it,
+    and HUP is how. It reopens rather than exiting, which matters as much: the
+    supervision loop in run stops the relay when rsyslogd goes away. Issue #30.
+    """
+    relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes'})
+
+    send(relay, subject='before the rename')
+    mailpit.wait_for_message('before the rename')
+    wait_for_file(relay, '/var/log/mail.log', 'status=sent')
+
+    container_exec(relay, ["mv", "/var/log/mail.log", "/var/log/mail.log.1"])
+    container_exec(relay, ["pkill", "-HUP", "-x", "rsyslogd"])
+
+    send(relay, subject='after the rename')
+    mailpit.wait_for_message('after the rename')
+
+    assert wait_for_file(relay, '/var/log/mail.log', 'status=sent').count('status=sent') == 1
+    assert container_exec(relay, ["cat", "/var/log/mail.log.1"]).count('status=sent') == 1
+    assert process_running(relay, 'rsyslogd')
+    relay.get_wrapped_container().reload()
+    assert relay.get_wrapped_container().status == 'running'
+
+
 def test_the_timestamp_setting_applies_to_the_file_log_too(postfix_factory, mailpit):
     """The template is set once, before both destinations are written, so
     asking for no timestamps means none anywhere -- worth knowing before
@@ -246,6 +376,22 @@ def test_forwarding_defaults_to_udp_on_the_standard_syslog_port(postfix_shared):
            'template="RSYSLOG_ForwardFormat")' in configuration
 
 
+def test_what_postfix_logs_while_it_starts_reaches_the_container_log(postfix_factory):
+    """rsyslogd is up before the daemons, so the first thing they say is kept.
+
+    Until it is, nothing listens on /dev/log and syslog(3) drops what it is
+    given without an error. Master's own "daemon started" line is the first
+    thing postfix logs, and it was gone: the container log began at the last
+    daemon to start instead of the first (issue #11). No mail is sent, so a
+    line found here was written while starting.
+    """
+    relay = postfix_factory()
+
+    line = wait_for_log_line(relay, 'daemon started')
+
+    assert line.startswith('postfix/master[')
+
+
 def test_the_configuration_is_generated_once_and_kept_across_restarts(
         postfix_factory, mailpit):
     """It is written to the container's own filesystem, so the second start
@@ -261,11 +407,12 @@ def test_the_configuration_is_generated_once_and_kept_across_restarts(
     send(relay, subject='logged after a restart')
     mailpit.wait_for_message('logged after a restart')
 
-    # Only what the second start wrote: the init script prints its own
-    # progress without a trailing newline, so the line that reports the
-    # stop and the first line of the restarted rsyslogd share one line.
+    # Only what the second start wrote, which begins at that line now that
+    # rsyslogd comes up first. The init script's own progress text has no
+    # trailing newline, so the first thing postfix logs follows it.
     restarted = container_log(relay).split('Skipping /etc/rsyslog.conf generating')[-1]
-    lines = [line for line in restarted.splitlines() if 'postfix/' in line]
+    lines = [INIT_SCRIPT_TEXT.sub('', line) for line in restarted.splitlines()]
+    lines = [line for line in lines if 'postfix/' in line]
 
     assert lines
     assert all(TIMESTAMPED_MAIL_LOG_LINE.match(line) for line in lines), lines[:3]
