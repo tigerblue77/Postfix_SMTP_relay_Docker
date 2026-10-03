@@ -103,11 +103,31 @@ awaitGreeting()
     return 1
 }
 
+# Runs an init script and prints what it said in one piece once it is done. The
+# scripts write "Starting ...: name" without ending the line and finish it with
+# a "." when the daemon is up. With rsyslogd already running, what the daemon
+# logs while starting reaches the same stdout in between, and the first line of
+# the log ended up glued to the script's text with the "." on a line of its own.
+# Into files and not pipes, so that a daemon which keeps its descriptors open
+# cannot hold this script up; if they cannot be made, the script is just run.
+runService()
+{
+    local out err status
+
+    out=$(mktemp) && err=$(mktemp) || { rm -f "$out" ; service "$@" ; return ; }
+    service "$@" > "$out" 2> "$err"
+    status=$?
+    cat "$out"
+    cat "$err" >&2
+    rm -f "$out" "$err"
+    return $status
+}
+
 startService()
 {
     local name="$1" process="$2"
 
-    service "$name" start
+    runService "$name" start
     awaitProcess "$process" && return
 
     echo "$name did not start, refusing to relay without it." >&2
@@ -496,7 +516,7 @@ stopDaemons()
     # they may not signal there: postsrsd matches two, and the chrooted worker
     # that dropped privileges is refused even though the root process holding
     # it is signalled and takes the worker with it.
-    service postfix stop
+    runService postfix stop
     pkill -x -TERM opendkim 2> /dev/null
     pkill -x -TERM postsrsd 2> /dev/null
     pkill -TERM saslauthd
