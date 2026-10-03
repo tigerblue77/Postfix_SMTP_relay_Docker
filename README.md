@@ -724,6 +724,42 @@ volumes:
   - /your_local_path:/var/log/
 ```
 
+The file is capped by `RSYSLOG_LOG_FILE_MAX_SIZE`, `100m` by default: when it
+reaches that size it becomes `mail.log.1`, replacing the one before, and a new
+`mail.log` is started, so the file log never takes more than twice the limit.
+Sizes are written the way rsyslog reads them, a number with `k`, `m` or `g`, and
+a value it could not read stops the container rather than leave the file
+unbounded.
+
+Set `RSYSLOG_LOG_FILE_MAX_SIZE` empty to turn the cap off, when you would rather
+keep a longer history and rotate the file from the host. The container has no
+logrotate of its own, so without either the file grows with the traffic until
+the host's disk is full. Rotate it with `copytruncate`:
+
+```
+/your_local_path/mail.log {
+    daily
+    rotate 14
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
+```
+
+`copytruncate` is what makes that work. rsyslogd keeps the file open, so a
+rotation that renames it leaves rsyslogd writing into the renamed file, and one
+that deletes it frees no space. The price is that a line written between the
+copy and the truncation can be lost. If you would rather rename, have
+rsyslogd reopen the file in a `postrotate` script instead, with
+`docker exec <container> pkill -HUP rsyslogd`. Signalling the container
+itself, with `docker kill -s HUP`, does not work: the signal never reaches
+rsyslogd, and a container started with `init: true` stops at once without
+shutting its daemons down.
+
+If the log has to be kept, forwarding it to a syslog server that already
+manages its own files, as described next, avoids the file altogether.
+
 You can also forward log output to remote syslog server if you define `RSYSLOG_REMOTE_HOST` variable. It always uses UDP protocol and port `514` as default value,
 port number can be changed to different one with `RSYSLOG_REMOTE_PORT`. Default format of forwarded messages is defined by Rsyslog template `RSYSLOG_ForwardFormat`,
 you can change it to [another template](https://www.rsyslog.com/doc/v8-stable/configuration/templates.html) (section Reserved Template Names) if you wish with `RSYSLOG_REMOTE_TEMPLATE` variable.
