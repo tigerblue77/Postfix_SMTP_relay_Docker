@@ -419,7 +419,20 @@ for e in ${!POSTMAP_*} ; do
 done
 shopt -u nullglob
 
-chown -R postfix:postfix /var/lib/postfix /var/spool/postfix
+chown -R postfix:postfix /var/lib/postfix
+
+# The queue is handed over by postfix itself, which knows who owns what in it:
+# the queue directories and the files in them are postfix's, the directory
+# holding them, pid/ and the chroot copies under etc/ and usr/ are root's, and
+# public/ and maildrop/ belong to the postdrop group. A recursive chown gave all
+# of it to postfix:postfix, and every restart then drew a dozen "not owned by"
+# warnings from postfix check (issue #10).
+#
+# The queue comes first in postfix-files, so what fails later cannot undo it.
+# What fails is the first manual page: the slim base image ships none, and
+# set-permissions stops at the first entry it cannot chown with an error that
+# means nothing here, so that one line is dropped.
+postfix set-permissions 2>&1 | grep -v '/usr/share/man/'
 
 # OPENDKIM_var env -> put "key value" line in /etc/opendkim.conf
 echo -n > /etc/opendkim.conf
@@ -521,9 +534,9 @@ EOF
   # Set here rather than through dpkg-statoverride, which only records what a
   # future dpkg unpack should apply -- nothing a container ever runs -- so the
   # mode never reached the directory at all and re-adding the override was an
-  # error on every restart (issue wader/postfix-relay#179). This has to stay
-  # below the "chown -R postfix:postfix /var/spool/postfix" above, which would
-  # take the directory back.
+  # error on every restart (issue wader/postfix-relay#179). This stays below
+  # the postfix set-permissions above, the last thing that sets the ownership
+  # of the queue, so that nothing which does can take the directory back.
   install -d -o root -g sasl -m 710 /var/spool/postfix/var/run/saslauthd
 
   saslauthd -c -r -a pam -m /var/spool/postfix/var/run/saslauthd &

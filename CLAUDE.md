@@ -718,8 +718,9 @@ Each of these looks like an oversight and is not. Read the linked commit before
 changing any of them.
 
 1. **`/var/mail` is deliberately not chowned.** `run` chowns `/var/lib/postfix`
-   and `/var/spool/postfix` to `postfix`, and pointedly not `/var/mail` next to
-   them. Adding it back breaks local delivery after the first restart:
+   to `postfix` and has `postfix set-permissions` do the same for
+   `/var/spool/postfix` (39), and pointedly not `/var/mail` next to them.
+   Adding it back breaks local delivery after the first restart:
    `local(8)` enforces `strict_mailbox_ownership` and refuses a mailbox not
    owned by the recipient. `local(8)` runs privileged and assumes the
    recipient's uid/gid itself, and `/var/mail` is already `root:mail 2775`
@@ -861,7 +862,8 @@ changing any of them.
 
 10. **The saslauthd mux directory is created with
     `install -d -o root -g sasl -m 710`, below the
-    `chown -R postfix:postfix /var/spool/postfix`.** saslauthd makes its own mux
+    `postfix set-permissions` that decides the queue's ownership (39).**
+    saslauthd makes its own mux
     world-writable, so the directory holding it is the access control.
     `dpkg-statoverride` only records what a *future* dpkg unpack should apply —
     nothing a container ever runs — so the mode never reached the directory at
@@ -1408,3 +1410,34 @@ changing any of them.
     tag master's own build used to push next to `sha-<commit>`.
     `tests/test_ci.py` pins all three. (issue #20, carried over from
     wader/postfix-relay#356)
+
+39. **`run` hands the queue to postfix with `postfix set-permissions`, and only
+    `/var/lib/postfix` with `chown -R`.** The recursive chown it replaced gave
+    all of `/var/spool/postfix` to `postfix:postfix`, which is wrong for the
+    directory itself, for `pid/` and for the chroot copies under `etc/` and
+    `usr/` (all root's), and for the group of `public/` and `maildrop/`
+    (`postdrop`). The first start hid it, because the queue directories did not
+    exist yet and postfix created them right; every restart after it printed
+    `postfix check` warnings "not owned by root" and "not owned by group
+    postdrop" -- measured on the built image, one on the first start and twelve
+    after a restart, in a log nobody reads until something else is wrong.
+    `postfix set-permissions` sets all of it back from `postfix-files`, creates
+    a queue directory that is missing and re-runs Debian's chroot set-up, and
+    it repairs a queue restored as root, which the chown was there for. Three
+    things about the line look wrong and are not. Its output goes through
+    `grep -v '/usr/share/man/'` because the slim base image ships no manual
+    pages and `post-install` ends the run, `|| exit 1` on every entry, with one
+    chown error at the first of them; that is not a half-done run, because the
+    queue is entries 4 to 17 of 155 in `postfix-files` and the manual pages are
+    the last. It is slower than the chown -- 0.3 s against about 1 s for
+    100,000 queue files on a local disk -- and that is the whole of what issue
+    #10 (wader/postfix-relay#344) reports for a large queue on a slow mount. It
+    was left as it is on purpose: the cost shows only with a backlog of hundreds
+    of thousands of messages on a network or Docker Desktop mount, and the
+    queue is now owned the way postfix checks for. And the capabilities the
+    README documents are enough for it: it needs `CHOWN` and `FOWNER`, both in
+    the set. A one-line `chown root /var/spool/postfix` after the recursive
+    chown was tried first and fixes one warning of twelve; putting the chown
+    back brings the rest back. Two tests in `tests/test_lifecycle.py` pin it:
+    the ownership across a restart, and a queue left to root being handed back
+    to postfix. (issue #10)
