@@ -98,7 +98,7 @@ ENV \
   POSTFIX_smtp_tls_CAfile=/etc/ssl/certs/ca-certificates.crt \
   POSTFIX_smtpd_tls_security_level=none \
   OPENDKIM_Socket=inet:12301@localhost \
-  OPENDKIM_Mode=sv \
+  OPENDKIM_Mode=s \
   OPENDKIM_UMask=002 \
   OPENDKIM_Syslog=yes \
   OPENDKIM_TrustAnchorFile=/usr/share/dns/root.key \

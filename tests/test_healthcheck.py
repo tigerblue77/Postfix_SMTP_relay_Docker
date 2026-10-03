@@ -93,6 +93,40 @@ def test_configured_but_unopened_port_is_unhealthy(postfix_image):
     finally:
         container.stop()
 
+def test_a_master_cf_postconf_cannot_read_is_unhealthy(postfix_image):
+    """The ports come from master.cf through postconf, which the check used to
+    run inside a command substitution: a postconf that failed printed nothing,
+    left no port to check, and the relay was reported healthy. master goes on
+    running with what it loaded, so this is what a master.cf edited in a
+    running container into something postfix cannot parse looks like
+    (issue #12).
+    """
+    container = start_relay(postfix_image)
+
+    try:
+        container.exec(["sh", "-c", "echo 'not a service line' >> /etc/postfix/master.cf"])
+
+        exit_code, output = run_healthcheck(container, expected=1)
+        assert exit_code == 1
+        assert 'no port was checked' in output
+    finally:
+        container.stop()
+
+def test_a_relay_with_no_inet_service_is_unhealthy(postfix_image):
+    """With no inet service left in master.cf there is no port to check, and
+    nothing a client can reach: the loop over the ports used to find nothing
+    wrong with that (issue #12)."""
+    container = start_relay(postfix_image)
+
+    try:
+        container.exec(["postconf", "-M", "-X", "smtp/inet"])
+
+        exit_code, output = run_healthcheck(container, expected=1)
+        assert exit_code == 1
+        assert 'no inet service' in output
+    finally:
+        container.stop()
+
 def test_daemon_that_cannot_start_stops_the_container(postfix_image):
     container = docker.from_env().containers.run(
         postfix_image,

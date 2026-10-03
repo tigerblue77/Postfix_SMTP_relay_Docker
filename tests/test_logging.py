@@ -12,14 +12,21 @@ import re
 
 from tests.helpers import (container_exec, container_log, container_stderr,
                            exit_code_within, file_missing, process_running,
-                           restart, send, wait_for_file, wait_for_log)
+                           restart, send, wait_for_file, wait_for_log, wait_for_log_line)
 
-MAIL_LOG_LINE = re.compile(r'^postfix/\w+\[\d+\]: ')
-TIMESTAMPED_MAIL_LOG_LINE = re.compile(r'^\d{4}-\d{2}-\d{2}T[\d:.+]+ \S+ postfix/\w+\[\d+\]: ')
+# "postfix-script" is one of the programs that log, hyphen and all.
+MAIL_LOG_LINE = re.compile(r'^postfix/[\w-]+\[\d+\]: ')
+TIMESTAMPED_MAIL_LOG_LINE = re.compile(
+    r'^\d{4}-\d{2}-\d{2}T[\d:.+]+ \S+ postfix/[\w-]+\[\d+\]: ')
+
+# The init script says what it is doing without ending the line, so the first
+# thing postfix logs while it starts or stops follows that text on the same one.
+INIT_SCRIPT_TEXT = re.compile(r'^(Starting|Stopping) the Postfix mail system: /etc/postfix')
 
 
 def postfix_log_lines(container):
-    return [line for line in container_log(container).splitlines() if 'postfix/' in line]
+    lines = (INIT_SCRIPT_TEXT.sub('', line) for line in container_log(container).splitlines())
+    return [line for line in lines if 'postfix/' in line]
 
 
 def test_container_log_has_no_timestamps_by_default(postfix, mailpit, smtp):
@@ -359,6 +366,22 @@ def test_forwarding_defaults_to_udp_on_the_standard_syslog_port(postfix_shared):
            'template="RSYSLOG_ForwardFormat")' in configuration
 
 
+def test_what_postfix_logs_while_it_starts_reaches_the_container_log(postfix_factory):
+    """rsyslogd is up before the daemons, so the first thing they say is kept.
+
+    Until it is, nothing listens on /dev/log and syslog(3) drops what it is
+    given without an error. Master's own "daemon started" line is the first
+    thing postfix logs, and it was gone: the container log began at the last
+    daemon to start instead of the first (issue #11). No mail is sent, so a
+    line found here was written while starting.
+    """
+    relay = postfix_factory()
+
+    line = wait_for_log_line(relay, 'daemon started')
+
+    assert line.startswith('postfix/master[')
+
+
 def test_the_configuration_is_generated_once_and_kept_across_restarts(
         postfix_factory, mailpit):
     """It is written to the container's own filesystem, so the second start
@@ -374,11 +397,12 @@ def test_the_configuration_is_generated_once_and_kept_across_restarts(
     send(relay, subject='logged after a restart')
     mailpit.wait_for_message('logged after a restart')
 
-    # Only what the second start wrote: the init script prints its own
-    # progress without a trailing newline, so the line that reports the
-    # stop and the first line of the restarted rsyslogd share one line.
+    # Only what the second start wrote, which begins at that line now that
+    # rsyslogd comes up first. The init script's own progress text has no
+    # trailing newline, so the first thing postfix logs follows it.
     restarted = container_log(relay).split('Skipping /etc/rsyslog.conf generating')[-1]
-    lines = [line for line in restarted.splitlines() if 'postfix/' in line]
+    lines = [INIT_SCRIPT_TEXT.sub('', line) for line in restarted.splitlines()]
+    lines = [line for line in lines if 'postfix/' in line]
 
     assert lines
     assert all(TIMESTAMPED_MAIL_LOG_LINE.match(line) for line in lines), lines[:3]

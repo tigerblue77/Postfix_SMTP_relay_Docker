@@ -415,7 +415,20 @@ fi
 # POSTFIX_var env -> postconf -e var=$POSTFIX_var
 for e in ${!POSTFIX_*} ; do postconf -e "${e:8}=${!e}" ; done
 # POSTFIXMASTER_var env -> postconf -Me var=$POSTFIXMASTER_var + replace __ with /
-for e in ${!POSTFIXMASTER_*} ; do v="${e:14}" && postconf -Me "${v//__/\/}=${!e}"; done
+# A refused entry -- one field short of the eight master.cf needs is the typo
+# the format invites -- leaves master.cf as it was: the service asked for is
+# missing, or the one it was meant to replace, with whatever it was meant to
+# lock down, stays in place. Postfix still starts and the relay reports
+# healthy, since the health check can only check what master.cf holds. So it
+# stops here, below postconf's own "fatal:" line, like every other thing that
+# was asked for and cannot be done.
+for e in ${!POSTFIXMASTER_*} ; do
+  v="${e:14}"
+  postconf -Me "${v//__/\/}=${!e}" || {
+    echo "$e was refused by postconf, refusing to relay without it." >&2
+    exit 1
+  }
+done
 # POSTMAP_var env value -> /etc/postfix/var
 shopt -s nullglob
 for e in ${!POSTMAP_*} ; do
@@ -432,7 +445,20 @@ for e in ${!POSTMAP_*} ; do
 done
 shopt -u nullglob
 
-chown -R postfix:postfix /var/lib/postfix /var/spool/postfix
+chown -R postfix:postfix /var/lib/postfix
+
+# The queue is handed over by postfix itself, which knows who owns what in it:
+# the queue directories and the files in them are postfix's, the directory
+# holding them, pid/ and the chroot copies under etc/ and usr/ are root's, and
+# public/ and maildrop/ belong to the postdrop group. A recursive chown gave all
+# of it to postfix:postfix, and every restart then drew a dozen "not owned by"
+# warnings from postfix check (issue #10).
+#
+# The queue comes first in postfix-files, so what fails later cannot undo it.
+# What fails is the first manual page: the slim base image ships none, and
+# set-permissions stops at the first entry it cannot chown with an error that
+# means nothing here, so that one line is dropped.
+postfix set-permissions 2>&1 | grep -v '/usr/share/man/'
 
 # OPENDKIM_var env -> put "key value" line in /etc/opendkim.conf
 echo -n > /etc/opendkim.conf
@@ -482,71 +508,23 @@ stopDaemons()
 # the script would otherwise carry on from where the signal interrupted it and
 # report the daemons it had just stopped as daemons that would not start.
 trap 'stopping=1 ; stopDaemons ; exit 0' SIGTERM SIGINT
-if [ ! -z "$OPENDKIM_DOMAINS" ] ; then
-  dkimConfig
-  startService opendkim opendkim
+
+# Refused before anything is started, rsyslogd included: a container that came
+# up first and died second would have relayed the unrewritten mail, and its log
+# would show a start that never happened.
+if [ ! -z "$POSTSRSD_SRS_DOMAIN" ] && ! command -v postsrsd > /dev/null ; then
+  echo "POSTSRSD_SRS_DOMAIN is set but postsrsd is not part of this image: Debian does not build it for $(dpkg --print-architecture)." >&2
+  exit 1
 fi
 
-if [ ! -z "$POSTSRSD_SRS_DOMAIN" ] ; then
-  if ! command -v postsrsd > /dev/null ; then
-    echo "POSTSRSD_SRS_DOMAIN is set but postsrsd is not part of this image: Debian does not build it for $(dpkg --print-architecture)." >&2
-    exit 1
-  fi
-  srsConfig
-  startService postsrsd postsrsd
-fi
-
-# Checking for user specified passwd file
-if [ ! -z "$SASL_Passwds" ] ; then
-  # Creating auth settings file
-  #
-  # Only the mechanisms that hand saslauthd a password to check are offered:
-  # it verifies a password, and CRAM-MD5 and DIGEST-MD5 prove knowledge of one
-  # without sending it, which needs the secret this check never has. Offering
-  # them means a client that picks the strongest mechanism on the list -- what
-  # msmtp and others do -- fails against a relay that is configured correctly.
-  if [ ! -e /etc/postfix/sasl/smtpd.conf ] ; then
-    cat <<'EOF' > /etc/postfix/sasl/smtpd.conf
-pwcheck_method: saslauthd
-mech_list: LOGIN PLAIN
-EOF
-  fi
-  
-  # Giving postfix permission to use saslauthd
-  adduser postfix sasl
-  
-  # Creating PAM authentication profile
-  if [ ! -e "/etc/pam.d/smtp" ] ; then
-    cat <<EOF > /etc/pam.d/smtp
-auth            required        pam_pwdfile.so pwdfile=$SASL_Passwds
-account         required        pam_permit.so
-session         required        pam_permit.so
-password        required        pam_deny.so
-EOF
-  fi
-  
-  # saslauthd makes its mux world writable itself, so the directory holding it
-  # is the access control: root:sasl 710 lets the sasl group in and nobody
-  # else. Postfix drops privileges with initgroups(), so a chrooted smtpd
-  # running as postfix carries the group added just above and can traverse the
-  # directory to reach the socket.
-  #
-  # Set here rather than through dpkg-statoverride, which only records what a
-  # future dpkg unpack should apply -- nothing a container ever runs -- so the
-  # mode never reached the directory at all and re-adding the override was an
-  # error on every restart (issue wader/postfix-relay#179). This has to stay
-  # below the "chown -R postfix:postfix /var/spool/postfix" above, which would
-  # take the directory back.
-  install -d -o root -g sasl -m 710 /var/spool/postfix/var/run/saslauthd
-
-  saslauthd -c -r -a pam -m /var/spool/postfix/var/run/saslauthd &
-  awaitProcess saslauthd || {
-    echo "saslauthd did not start, refusing to relay without it." >&2
-    exit 1
-  }
-fi
-
-startService postfix master
+# rsyslogd comes up before every other daemon. Until it does there is no
+# /dev/log, and syslog(3) does not fail when nothing listens on it: what a
+# daemon writes while starting is dropped without an error, master's own
+# "daemon started" line and the reason opendkim gives for refusing a socket
+# among it. Started here, the container log begins with the first daemon
+# instead of with the last (issue #11). It stays below the postfix
+# set-permissions above, the last thing that sets the ownership of the queue
+# the socket for the chrooted daemons is opened under.
 
 # Don't fiddle with existing config file (e.g. mounted from filesystem)
 if [ -e /etc/rsyslog.conf ]; then
@@ -603,6 +581,68 @@ fi
 rsyslogd -n &
 rsyslogPid=$!
 supervised="$supervised rsyslogd"
+
+if [ ! -z "$OPENDKIM_DOMAINS" ] ; then
+  dkimConfig
+  startService opendkim opendkim
+fi
+
+if [ ! -z "$POSTSRSD_SRS_DOMAIN" ] ; then
+  srsConfig
+  startService postsrsd postsrsd
+fi
+
+# Checking for user specified passwd file
+if [ ! -z "$SASL_Passwds" ] ; then
+  # Creating auth settings file
+  #
+  # Only the mechanisms that hand saslauthd a password to check are offered:
+  # it verifies a password, and CRAM-MD5 and DIGEST-MD5 prove knowledge of one
+  # without sending it, which needs the secret this check never has. Offering
+  # them means a client that picks the strongest mechanism on the list -- what
+  # msmtp and others do -- fails against a relay that is configured correctly.
+  if [ ! -e /etc/postfix/sasl/smtpd.conf ] ; then
+    cat <<'EOF' > /etc/postfix/sasl/smtpd.conf
+pwcheck_method: saslauthd
+mech_list: LOGIN PLAIN
+EOF
+  fi
+  
+  # Giving postfix permission to use saslauthd
+  adduser postfix sasl
+  
+  # Creating PAM authentication profile
+  if [ ! -e "/etc/pam.d/smtp" ] ; then
+    cat <<EOF > /etc/pam.d/smtp
+auth            required        pam_pwdfile.so pwdfile=$SASL_Passwds
+account         required        pam_permit.so
+session         required        pam_permit.so
+password        required        pam_deny.so
+EOF
+  fi
+  
+  # saslauthd makes its mux world writable itself, so the directory holding it
+  # is the access control: root:sasl 710 lets the sasl group in and nobody
+  # else. Postfix drops privileges with initgroups(), so a chrooted smtpd
+  # running as postfix carries the group added just above and can traverse the
+  # directory to reach the socket.
+  #
+  # Set here rather than through dpkg-statoverride, which only records what a
+  # future dpkg unpack should apply -- nothing a container ever runs -- so the
+  # mode never reached the directory at all and re-adding the override was an
+  # error on every restart (issue wader/postfix-relay#179). This stays below
+  # the postfix set-permissions above, the last thing that sets the ownership
+  # of the queue, so that nothing which does can take the directory back.
+  install -d -o root -g sasl -m 710 /var/spool/postfix/var/run/saslauthd
+
+  saslauthd -c -r -a pam -m /var/spool/postfix/var/run/saslauthd &
+  awaitProcess saslauthd || {
+    echo "saslauthd did not start, refusing to relay without it." >&2
+    exit 1
+  }
+fi
+
+startService postfix master
 
 # A running master is not the same as a postfix that can serve. Master binds
 # the port and forks an smtpd per connection, so a setting smtpd rejects when
