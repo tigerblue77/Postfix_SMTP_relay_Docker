@@ -289,29 +289,39 @@ def test_a_file_log_truncated_in_place_is_written_again_from_its_start(
     assert logged.count('status=sent') == 1
 
 
-FILLER = ('for i in $(seq 1 300) ; do '
-          'logger -p mail.info "filler line $i, to take the file log past its limit" ; done')
+# One logger process sends every line back to back, so rsyslogd takes them in
+# batches, which is the worst case for the size of the file (see below).
+FILLER = ('for i in $(seq 1 1000) ; do '
+          'echo "filler line $i, to take the file log past its limit" ; done > /tmp/filler ; '
+          'logger -p mail.info -f /tmp/filler')
+
+# rsyslogd looks at the size of the file when it writes its buffer out, not at
+# every line: omfile's ioBufferSize, 4096 bytes unless set. A file that is
+# under the limit before a write can therefore be over it by up to one buffer
+# afterwards. Lines that arrive one at a time hide that, and a loaded runner
+# does not.
+IO_BUFFER = 4096
 
 
 def test_the_file_log_is_capped_and_keeps_the_file_before(postfix_factory):
     """Nothing else in the container rotates the file, so it is bounded by
     RSYSLOG_LOG_FILE_MAX_SIZE: at the limit it becomes mail.log.1, replacing
     the one before, and a new mail.log is started (issue #30). A small limit
-    here, so a few hundred lines go past it several times over.
+    here, so a thousand lines, fifty kilobytes, go past it many times over.
     """
     relay = postfix_factory(env={'RSYSLOG_LOG_TO_FILE': 'yes',
                                  'RSYSLOG_LOG_FILE_MAX_SIZE': '4k'})
 
     container_exec(relay, ["sh", "-c", FILLER])
-    wait_for_file(relay, '/var/log/mail.log', 'filler line 300')
+    wait_for_file(relay, '/var/log/mail.log', 'filler line 1000')
 
     sizes = container_exec(relay, ["stat", "-c", "%n %s",
                                    "/var/log/mail.log", "/var/log/mail.log.1"])
-    # rsyslogd rotates after the write that crosses the limit, so a file can
-    # be over it by one line, and never by more.
+    # Over the limit by up to one buffer, as IO_BUFFER says, and no more: an
+    # unrotated file would hold all fifty kilobytes.
     for line in sizes.splitlines():
         name, size = line.split()
-        assert int(size) <= 4096 + 100, sizes
+        assert int(size) <= 4096 + IO_BUFFER, sizes
     assert 'filler line' in container_exec(relay, ["cat", "/var/log/mail.log.1"])
 
 

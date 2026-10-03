@@ -551,7 +551,7 @@ EOF
   # file, and on the host directory the README suggests mounting it grows
   # until that disk is full (issue #30). At the limit rsyslogd runs the script
   # below, which keeps the one file before this one, and then starts a new
-  # file, so the log takes at most twice the limit. The script is written
+  # file, so the log takes about twice the limit at most. The script is written
   # rather than inlined: rsyslogd runs a size limit command without a shell,
   # and stops writing the file if the command leaves it too big.
   if [ "${RSYSLOG_LOG_TO_FILE}" == 'yes' ] && [ -n "${RSYSLOG_LOG_FILE_MAX_SIZE}" ] ; then

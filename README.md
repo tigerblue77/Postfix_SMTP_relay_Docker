@@ -819,7 +819,9 @@ volumes:
 
 The file is capped by `RSYSLOG_LOG_FILE_MAX_SIZE`, `100m` by default: when it
 reaches that size it becomes `mail.log.1`, replacing the one before, and a new
-`mail.log` is started, so the file log never takes more than twice the limit.
+`mail.log` is started, so the file log takes about twice the limit at most:
+rsyslogd checks the size as it writes its buffer out, so each of the two files
+can pass the limit by up to 4 KiB.
 Sizes are written the way rsyslog reads them, a number with `k`, `m` or `g`, and
 a value it could not read stops the container rather than leave the file
 unbounded.
