@@ -402,7 +402,20 @@ fi
 # POSTFIX_var env -> postconf -e var=$POSTFIX_var
 for e in ${!POSTFIX_*} ; do postconf -e "${e:8}=${!e}" ; done
 # POSTFIXMASTER_var env -> postconf -Me var=$POSTFIXMASTER_var + replace __ with /
-for e in ${!POSTFIXMASTER_*} ; do v="${e:14}" && postconf -Me "${v//__/\/}=${!e}"; done
+# A refused entry -- one field short of the eight master.cf needs is the typo
+# the format invites -- leaves master.cf as it was: the service asked for is
+# missing, or the one it was meant to replace, with whatever it was meant to
+# lock down, stays in place. Postfix still starts and the relay reports
+# healthy, since the health check can only check what master.cf holds. So it
+# stops here, below postconf's own "fatal:" line, like every other thing that
+# was asked for and cannot be done.
+for e in ${!POSTFIXMASTER_*} ; do
+  v="${e:14}"
+  postconf -Me "${v//__/\/}=${!e}" || {
+    echo "$e was refused by postconf, refusing to relay without it." >&2
+    exit 1
+  }
+done
 # POSTMAP_var env value -> /etc/postfix/var
 shopt -s nullglob
 for e in ${!POSTMAP_*} ; do
