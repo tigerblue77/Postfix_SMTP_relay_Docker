@@ -12,9 +12,9 @@ import smtplib
 
 import pytest
 
-from tests.helpers import (container_exec, container_log, esmtp_features,
-                           listening_ports, postconf, send, send_raw, smtp_connect,
-                           wait_for_log)
+from tests.helpers import (container_exec, container_log, container_stderr,
+                           esmtp_features, listening_ports, postconf, send,
+                           send_raw, smtp_connect, wait_for_log)
 
 
 def test_postfix_variables_configure_main_cf(postfix_factory, mailpit):
@@ -284,13 +284,19 @@ def test_a_parameter_postfix_does_not_know_does_not_stop_the_relay(postfix_share
     """A typo in a variable name must not cost the mail.
 
     postconf writes whatever it is given, so the value ends up in main.cf
-    and postfix reports it as unused rather than refusing to start.
+    and postfix reports it as unused rather than refusing to start -- and
+    the report reaches the container log, which is the only place a user
+    would read it. postfix only reports it to whoever asks, and nothing used
+    to ask.
     """
     relay = postfix_shared(env={'POSTFIX_no_such_postfix_parameter': 'whatever'})
 
     assert container_exec(relay, ["grep", "no_such_postfix_parameter",
                                   "/etc/postfix/main.cf"]).strip() == \
         'no_such_postfix_parameter = whatever'
+    stderr = container_stderr(relay)
+    assert 'unused parameter: no_such_postfix_parameter=whatever' in stderr
+    assert 'check its spelling' in stderr
 
     send(relay, subject='relayed anyway')
 

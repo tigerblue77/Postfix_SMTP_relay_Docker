@@ -126,6 +126,17 @@ container asks postfix for a greeting before handing over, so it stops with the
 postfix `fatal:` line naming the parameter instead of coming up unable to
 relay — but the value is still yours to get right.
 
+A misspelt name is kept and reported, not refused: `POSTFIX_mynetwork` for
+`mynetworks` writes a parameter postfix never reads, which leaves the setting
+you meant to change at its default. The container starts anyway, so the mail
+is not lost, and the log names it once at start-up:
+
+```
+postconf: warning: /etc/postfix/main.cf: unused parameter: mynetwork=10.0.0.0/8
+```
+
+The same goes for a misspelt `-o` option in a `POSTFIXMASTER_` variable.
+
 Note that `POSTFIX_myhostname` will change the postfix option
 [myhostname](http://www.postfix.org/postconf.5.html#myhostname). The image ships
 `POSTFIX_myhostname=hostname`, so unless you set it yourself a running container
