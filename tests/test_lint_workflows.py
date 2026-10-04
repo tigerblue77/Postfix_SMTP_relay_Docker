@@ -26,6 +26,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GITHUB = REPO_ROOT / ".github"
 LINT_WORKFLOWS = GITHUB / "workflows" / "lint-workflows.yml"
+TEST_RESULTS = GITHUB / "workflows" / "test-results.yml"
 RULESET = GITHUB / "rulesets" / "master.json"
 ACTIONLINT_CONFIG = GITHUB / "actionlint.yaml"
 ZIZMOR_CONFIG = GITHUB / "zizmor.yml"
@@ -195,3 +196,40 @@ def test_the_workflow_linters_let_through_only_what_is_argued_for():
         "ref, for every action': a hash pin would fail the whole tree, and any "
         "would let an action with no ref through"
     )
+
+
+def test_the_workflow_run_ignore_still_has_what_justifies_it():
+    """`# zizmor: ignore[dangerous-triggers]` on the `workflow_run` line of
+    `test-results.yml` exempts the whole `on:` block, not that one trigger: a
+    `pull_request_target:` added next to it would pass silently. What argues for
+    the ignore, in that file's header, is pinned here instead: the workflow has
+    that trigger and no other; its job checks out nothing and runs no script,
+    so nothing taken from the artifacts of the triggering run is ever executed,
+    and no local action (`uses: ./...`, which would need a checkout) either; and
+    its token carries the five permissions the header counts and nothing else.
+    """
+    workflow = yaml.safe_load(TEST_RESULTS.read_text())
+    assert set(workflow[True]) == {"workflow_run"}, (
+        f"{TEST_RESULTS.name} triggers on {sorted(workflow[True])}; the ignore "
+        f"covers the whole block and was argued for a workflow_run alone"
+    )
+    assert workflow["permissions"] == {"actions": "read"}, workflow["permissions"]
+    assert len(workflow["jobs"]) == 1, sorted(workflow["jobs"])
+    (job,) = workflow["jobs"].values()
+    assert job["permissions"] == {
+        "checks": "write",
+        "pull-requests": "write",
+        "contents": "read",
+        "issues": "read",
+        "actions": "read",
+    }, f"the job's token is no longer the five permissions the header counts: {job['permissions']}"
+    assert "container" not in job and "services" not in job, "the job runs in something other than the runner"
+    for step in job["steps"]:
+        assert "run" not in step, (
+            f"step {step.get('name')!r} runs a script; this job may only hand "
+            f"the artifacts to actions as files to parse"
+        )
+        uses = str(step.get("uses", "")).lower()
+        assert uses and not uses.startswith("actions/checkout@") and not uses.startswith(("./", "docker://")), (
+            f"step {step.get('name')!r} checks out, runs a local action or a container: {step.get('uses')!r}"
+        )

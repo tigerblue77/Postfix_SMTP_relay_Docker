@@ -209,7 +209,10 @@ the containers it used, so `-o log_cli=true` is rarely what you want.
 A seventh that starts none, `test_lint_workflows.py`, reads
 `.github/workflows/lint-workflows.yml`, the ruleset and the two linters'
 configuration, and holds the workflow linters' pins and flags, and what they are
-allowed to let through, to what is argued for in the file.
+allowed to let through, to what is argued for in the file. That includes what
+justifies the one inline ignore: `test-results.yml` keeps its `workflow_run` as
+the only trigger, with no checkout, no script and a five-permission token,
+because the ignore exempts the whole `on:` block.
 
 ### Build
 
@@ -236,7 +239,7 @@ shellcheck run healthcheck                 # everything, at the stock threshold
 ruff check --no-cache --select F,B tests   # what CI runs; exits 0
 ruff check --statistics --select ALL tests # everything ruff has, for reference
 
-actionlint -shellcheck= -pyflakes=         # what CI runs; exits 0
+"$(go env GOPATH)/bin/actionlint" -shellcheck= -pyflakes=   # what CI runs; exits 0
 zizmor --offline --strict-collection .     # what CI runs, minus the annotations
 ```
 
@@ -244,9 +247,11 @@ The last two lint the workflows and `.github/dependabot.yml`, and are
 `lint-workflows.yml`'s business rather than the ones above's: **actionlint**
 and **zizmor** are required checks. actionlint 1.7.12 is built by `go install
 github.com/rhysd/actionlint/cmd/actionlint@v1.7.12` and needs Go 1.25 or
-newer, which Go downloads for itself when the installed one is older; zizmor
-1.30.1 is `pip install` of the pinned wheel, which `lint-workflows.yml` does
-with its hash. Both read their configuration without being told where it is,
+newer, which Go downloads for itself when the installed one is older. The
+binary lands in `$(go env GOPATH)/bin`, which is not on `PATH` in a Claude Code
+on the web session, hence the full path above. zizmor 1.30.1 is `pip install`
+of the pinned wheel, which `lint-workflows.yml` does with its hash. Both read
+their configuration without being told where it is,
 and run from the repository root. Their suppressions are three — the two
 actionlint messages in `.github/actionlint.yaml` and the `dangerous-triggers`
 comment in `test-results.yml` — and `tests/test_lint_workflows.py` fails when

@@ -1196,7 +1196,7 @@ releasing something no check has seen.
 | `test_scan.py` | What the daily image scan does with a finding: the rebuild it dispatches, the re-scan that says whether it worked, and the issue it then closes. Also three rules every workflow keeps: each job has a timeout, each workflow states what its token may do, and each `actions/checkout` sets `persist-credentials: false`, so that the job's token is not kept for the steps after it |
 | `test_claude_code_settings.py` | The commands a Claude Code session may run here without asking, and that the session-start hook stays registered |
 | `test_sign_off.py` | The sign-off every commit needs: which commits the gate refuses, and that the `git signoff` alias a session is given makes one it accepts; and what else the session-start hook tells a session, on the maintainer's copy and on a fork |
-| `test_lint_workflows.py` | What the workflow lint gates: that actionlint and zizmor are required checks and report on every pull request, that both stay pinned (by version, and for zizmor by wheel hash) and run with the flags that keep the verdict the same for the same tree (`--offline`, `--strict-collection`), and that they let through only the suppressions argued for in the tree, none of them dead |
+| `test_lint_workflows.py` | What the workflow lint gates: that actionlint and zizmor are required checks and report on every pull request, that both stay pinned (by version, and for zizmor by wheel hash) and run with the flags that keep the verdict the same for the same tree (`--offline`, `--strict-collection`), and that they let through only the suppressions argued for in the tree, none of them dead, including that `test-results.yml`, whose `workflow_run` trigger zizmor is told to ignore, still has only that trigger, no checkout and no script |
 
 Use the `postfix` fixture for a relay with the default configuration,
 `postfix_shared` for a configuration several tests read the same way, and
@@ -1270,12 +1270,13 @@ ruleset recorded in `.github/rulesets/master.json` has been imported under
 Settings > Rules, and report without being required until then:
 
 ```bash
-actionlint -shellcheck= -pyflakes=
+"$(go env GOPATH)/bin/actionlint" -shellcheck= -pyflakes=
 zizmor --offline --strict-collection .
 ```
 
-actionlint is built with `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`
-and zizmor installed with `pip install zizmor==1.30.1`, the versions CI pins.
+actionlint is built with `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`,
+which puts it in `$(go env GOPATH)/bin`, and that directory is not always on
+`PATH`. zizmor is installed with `pip install zizmor==1.30.1`, the versions CI pins.
 shellcheck and pyflakes are left off in actionlint on purpose, so that its
 verdict does not depend on what else happens to be installed. zizmor runs
 offline so that the same tree always gets the same answer, which costs it four
