@@ -31,7 +31,6 @@ RULESET = REPO_ROOT / ".github" / "rulesets" / "master.json"
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 AUTO_MERGE = WORKFLOWS / "dependabot-auto-merge.yml"
 UPDATER = WORKFLOWS / "auto_update_pull_request_branches.yml"
-LINT_WORKFLOWS = WORKFLOWS / "lint-workflows.yml"
 MERGE_METHODS = {"--merge": "merge", "--squash": "squash", "--rebase": "rebase"}
 
 
@@ -107,34 +106,6 @@ def test_the_ruleset_still_gates_the_default_branch():
     assert not any(approvals), (
         f"required approvals {approvals}: one holds every Dependabot update "
         f"for a person, however green"
-    )
-
-
-def test_the_workflow_linters_gate_every_pull_request():
-    """actionlint and zizmor are required checks, and so must report on every
-    pull request: a required check that a path filter, or a missing trigger,
-    keeps from running leaves the pull requests it skips waiting for a result
-    that never comes. Their display names are what the ruleset matches on, so
-    the names are asserted too, and not only that the ruleset names *some* job.
-
-    Only the ruleset file makes them required. Importing it under Settings >
-    Rules is the maintainer's step, which no test can take.
-    """
-    workflow = yaml.safe_load(LINT_WORKFLOWS.read_text())
-    names = sorted(job["name"] for job in workflow["jobs"].values())
-    assert names == ["actionlint", "zizmor"], (
-        f"{LINT_WORKFLOWS.name} reports {names}, not the two checks the ruleset names"
-    )
-    missing = [name for name in names if name not in required_contexts()]
-    assert not missing, f"linters that gate nothing, absent from the ruleset: {missing}"
-
-    triggers = workflow[True]
-    assert "pull_request" in triggers, f"{LINT_WORKFLOWS.name} does not run on pull requests"
-    filters = {"branches", "branches-ignore", "paths", "paths-ignore", "types"}
-    narrowed = filters & set(triggers["pull_request"] or {})
-    assert not narrowed, (
-        f"the pull_request trigger of {LINT_WORKFLOWS.name} is narrowed by "
-        f"{sorted(narrowed)}, so a required check would not report on every pull request"
     )
 
 

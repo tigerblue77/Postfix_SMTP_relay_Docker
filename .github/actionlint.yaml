@@ -7,7 +7,8 @@
 #
 # It holds one suppression, which is two messages about one step, and every
 # line of it is a decision to argue rather than a line to append:
-# tests/test_lint.py fails when this list changes without being edited there.
+# tests/test_lint_workflows.py fails when this list changes without being edited
+# there.
 
 paths:
   .github/workflows/auto_update_pull_request_branches.yml:

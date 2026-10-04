@@ -1196,6 +1196,7 @@ releasing something no check has seen.
 | `test_scan.py` | What the daily image scan does with a finding: the rebuild it dispatches, the re-scan that says whether it worked, and the issue it then closes. Also three rules every workflow keeps: each job has a timeout, each workflow states what its token may do, and each `actions/checkout` sets `persist-credentials: false`, so that the job's token is not kept for the steps after it |
 | `test_claude_code_settings.py` | The commands a Claude Code session may run here without asking, and that the session-start hook stays registered |
 | `test_sign_off.py` | The sign-off every commit needs: which commits the gate refuses, and that the `git signoff` alias a session is given makes one it accepts; and what else the session-start hook tells a session, on the maintainer's copy and on a fork |
+| `test_lint_workflows.py` | What the workflow lint gates: that actionlint and zizmor are required checks and report on every pull request, that both stay pinned (by version, and for zizmor by wheel hash) and run with the flags that keep the verdict the same for the same tree (`--offline`, `--strict-collection`), and that they let through only the suppressions argued for in the tree, none of them dead |
 
 Use the `postfix` fixture for a relay with the default configuration,
 `postfix_shared` for a configuration several tests read the same way, and
@@ -1263,21 +1264,24 @@ The workflows themselves are linted too, by two tools that read the yaml and
 nothing else, so neither needs docker: [actionlint](https://github.com/rhysd/actionlint)
 for what makes a workflow wrong, such as a bad expression or an input the
 action does not have, and [zizmor](https://docs.zizmor.sh/) for what makes one
-unsafe, such as a token left in `.git/config` or an expression expanded into a
-script. Both run on every pull request and both are required:
+unsafe, such as a token kept for later steps or an expression expanded into a
+script. Both run on every pull request. They are required checks once the
+ruleset recorded in `.github/rulesets/master.json` has been imported under
+Settings > Rules, and report without being required until then:
 
 ```bash
 actionlint -shellcheck= -pyflakes=
-zizmor --offline .
+zizmor --offline --strict-collection .
 ```
 
 actionlint is built with `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`
 and zizmor installed with `pip install zizmor==1.30.1`, the versions CI pins.
 shellcheck and pyflakes are left off in actionlint on purpose, so that its
-verdict does not depend on what else happens to be installed, and zizmor runs
-offline so that the same tree always gets the same answer. Their configuration
-is `.github/actionlint.yaml` and `.github/zizmor.yml`, which they read by
-themselves.
+verdict does not depend on what else happens to be installed. zizmor runs
+offline so that the same tree always gets the same answer, which costs it four
+audits, the ones that look up the actions a workflow uses: it is not a scan for
+vulnerable actions. Their configuration is `.github/actionlint.yaml` and
+`.github/zizmor.yml`, which they read by themselves.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 

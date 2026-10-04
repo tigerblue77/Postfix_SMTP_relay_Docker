@@ -29,17 +29,26 @@ permissions:
 # and a workflow is where this repository has already shipped a wrong
 # expression: an "if:" comparing a skipped step's output with a number, which
 # read as true on exactly the paths where the step had not run (CLAUDE.md,
-# invariant 36). zizmor catches what makes one unsafe: a token left in
-# .git/config, an expression expanded into a script, a permission nobody asked
-# for.
+# invariant 36). zizmor catches what makes one unsafe: a token kept for later
+# steps, an expression expanded into a script, a permission nobody asked for.
 #
-# Both are pinned and neither reads the network once installed, for the reason
-# lint.yml gives for its own: a linter that moves fails somebody's unrelated
-# pull request on the day it ships a new check. Nothing bumps these pins either;
-# moving to a newer one is a deliberate edit, and so is every suppression, of
-# which there are three -- .github/actionlint.yaml and .github/zizmor.yml say
-# which and why, and tests/test_lint.py fails when the list changes without
-# being edited there.
+# Both are pinned, and nothing bumps the pins; moving to a newer one is a
+# deliberate edit, and so is every suppression, of which there are three --
+# .github/actionlint.yaml and .github/zizmor.yml say which and why, and
+# tests/test_lint_workflows.py fails when the list changes without being edited
+# there. A linter that moves would fail somebody's unrelated pull request on the
+# day it ships a new check, which is what lint.yml pins its own for.
+#
+# What a green zizmor does NOT mean. It runs --offline, and offline zizmor drops
+# four audits: impostor-commit, known-vulnerable-actions, ref-confusion and
+# stale-action-refs. Those are the ones that ask GitHub or an advisory database
+# about the actions a workflow uses, and their answers change daily, so a
+# required check that depended on them could go red for a reason that is in no
+# pull request. So this is not a scan for vulnerable or moved actions. Two more
+# limits: the unpinned-uses policy is ref-pin, which accepts any ref, a branch
+# such as @main included, so it enforces that an action has a ref and not that
+# the ref is a version tag; and the default persona leaves out the pedantic and
+# auditor findings, 29 on this tree, listed in CLAUDE.md.
 
 jobs:
   actionlint:
@@ -52,7 +61,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # No later step uses git against the remote, so the token is not left in .git/config.
+          # No later step uses git against the remote, so the checkout does not keep the job token for them.
           persist-credentials: false
 
       - name: Install actionlint
@@ -92,7 +101,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # No later step uses git against the remote, so the token is not left in .git/config.
+          # No later step uses git against the remote, so the checkout does not keep the job token for them.
           persist-credentials: false
 
       - name: Install zizmor
@@ -115,7 +124,11 @@ jobs:
         # required check whose verdict moves overnight, for a reason that is in
         # no pull request, is the kind scan.yml's header says does not belong
         # on one. What is left reads the files alone, so the same tree always
-        # gets the same answer. The annotations land on the lines they name.
+        # gets the same answer; the cost is the four audits the header lists.
+        # --strict-collection because without it a file zizmor cannot parse is
+        # skipped with a warning and the check stays green, and zizmor is the
+        # only thing here that reads dependabot.yml. The annotations land on the
+        # lines they name.
         run: |
           zizmor --version
-          zizmor --offline --format github .
+          zizmor --offline --strict-collection --format github .

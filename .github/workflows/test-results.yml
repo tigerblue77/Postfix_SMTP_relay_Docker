@@ -22,8 +22,8 @@ name: Test Results
 #    tree.
 # Moving the publishing into test.yml would remove the trigger and the
 # suppression, and with them the check on every pull request that cannot write.
-# tests/test_lint.py fails when a suppression is added, so this one is argued
-# for here rather than appended to.
+# tests/test_lint_workflows.py fails when a suppression is added, so this one
+# is argued for here rather than appended to.
 
 on:
   workflow_run:  # zizmor: ignore[dangerous-triggers]

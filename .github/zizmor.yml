@@ -18,5 +18,7 @@ rules:
         # something nobody can read. The one action that is pinned to a commit,
         # EnricoMi/publish-unit-test-result-action, stays pinned; this accepts
         # that as well as a tag. What it still refuses is an action named with
-        # no ref at all.
+        # no ref at all; it accepts any ref, a branch such as @main included, so
+        # it enforces that an action has a ref and not that the ref is a version
+        # tag.
         "*": ref-pin
