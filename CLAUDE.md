@@ -535,13 +535,14 @@ Notes a contributor will hit:
   left out, the token gets the repository's default, which no diff shows. A
   job widens it only for itself, the way the two in `ci.yml` that push the
   GHCR mirror add `packages: write`. (issue #18) Every `actions/checkout`
-  likewise sets `persist-credentials: false`. By default the action keeps the
-  job's token for the steps after it, in a credentials file in the runner's temp
-  directory that `.git/config` points at with `includeIf` entries; with `false`
-  it removes it right after its own fetch. `tests/test_scan.py` fails on a
-  checkout, in a workflow or a composite action anywhere in the tree, that does
-  not set it, unless that step is on the short list there with the reason it
-  needs the token. The list is empty: no job with a checkout pushes or fetches
+  likewise sets `persist-credentials: false`. By default the action sets up a
+  credential for the steps after it, in a file in the runner's temp directory
+  that `.git/config` points at with `includeIf` entries; with `false` it removes
+  that credential right after its own fetch, so no later step inherits it (a
+  step that names `secrets.GITHUB_TOKEN`, a registry login for one, still has
+  the token). `tests/test_scan.py` fails on a checkout, in a workflow or a
+  composite action anywhere in the tree, that does not set it, unless that step
+  is on the short list there with the reason it needs the credential. The list is empty: no job with a checkout pushes or fetches
   through git, and the one `git ls-remote`, in **Publish latest**, runs in a job
   with no checkout. (issue #101)
 - **One action is pinned to a commit**, `EnricoMi/publish-unit-test-result-action`
