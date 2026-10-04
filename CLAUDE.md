@@ -479,13 +479,15 @@ Notes a contributor will hit:
   left out, the token gets the repository's default, which no diff shows. A
   job widens it only for itself, the way the two in `ci.yml` that push the
   GHCR mirror add `packages: write`. (issue #18) Every `actions/checkout`
-  likewise sets `persist-credentials: false`, so the job's token is not left in
-  `.git/config` for a later step, or an upload of the workspace, to read, and
-  `tests/test_scan.py` fails on one that does not unless its job is on the
-  short list there with the step that needs the token. The list is empty: no
-  job with a checkout pushes or fetches through git, and the one
-  `git ls-remote`, in **Publish latest**, runs in a job with no checkout.
-  (issue #101)
+  likewise sets `persist-credentials: false`. By default the action keeps the
+  job's token for the steps after it, in a credentials file in the runner's temp
+  directory that `.git/config` points at with `includeIf` entries; with `false`
+  it removes it right after its own fetch. `tests/test_scan.py` fails on a
+  checkout, in a workflow or a composite action anywhere in the tree, that does
+  not set it, unless that step is on the short list there with the reason it
+  needs the token. The list is empty: no job with a checkout pushes or fetches
+  through git, and the one `git ls-remote`, in **Publish latest**, runs in a job
+  with no checkout. (issue #101)
 - **One action is pinned to a commit**, `EnricoMi/publish-unit-test-result-action`
   in `test-results.yml`; everything else is on a major tag, and Dependabot's
   weekly `github-actions` ecosystem bumps them. Do not "normalise" that

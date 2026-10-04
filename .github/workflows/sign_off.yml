@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          # No later step uses git against the remote, so the token is not left in .git/config.
+          # No later step uses git against the remote, so the checkout does not keep the job token for them.
           persist-credentials: false
 
       # The two SHAs travel as environment variables rather than being expanded
