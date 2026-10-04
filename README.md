@@ -412,6 +412,21 @@ environment:
   - POSTFIX_smtpd_tls_auth_only=yes
 ```
 
+A certificate from a real authority, such as one the host already renews over
+ACME, mounts the same way. On an internal network, where the point is that the
+password does not cross it in the clear rather than proving who the relay is, a
+self-signed pair made with the image's own `openssl` does:
+
+```
+docker run --rm -v "$PWD":/out tigerblue77/postfix_smtp_relay sh -c \
+  'openssl req -x509 -newkey rsa:2048 -noenc -days 3650 \
+     -subj /CN=smtp.domain.tld -keyout /out/key.pem -out /out/cert.pem'
+```
+
+That writes `cert.pem` and `key.pem` to the current directory, the key readable
+by its owner only. Nothing can verify a certificate no authority signed, so the
+clients have to be told to accept it.
+
 Mail leaving the relay is already sent over TLS whenever the receiving server
 offers it (`POSTFIX_smtp_tls_security_level=may`). Set it to `encrypt` when
 relaying through a provider, where an unencrypted connection is a
@@ -1119,7 +1134,7 @@ releasing something no check has seen.
 
 | File | What it covers |
 | --- | --- |
-| `test_image.py` | The published image before anything runs: the defaults from the Dockerfile, the declared volumes, the exposed port, the health check, the programs the README has users run out of it |
+| `test_image.py` | The published image before anything runs: the defaults from the Dockerfile, the declared volumes, the exposed port, the health check, the programs the README has users run out of it, the client certificate command run as the README writes it |
 | `test_defaults.py` | What a relay that is told nothing but where to send does, and the daemons it does not start |
 | `test_smtp.py` | The SMTP conversation itself, and that the message handed over is the message that was given |
 | `test_sendmail.py` | Whole messages, with their parts, their attachments and their envelope |
