@@ -9,7 +9,8 @@ true: a required check is matched by a job's display `name:`, so renaming a
 job without editing the ruleset leaves a context that never reports, and a
 context that never reports blocks every pull request until someone with admin
 rights notices. The same goes for the merge method the Dependabot auto-merge
-asks for, which the ruleset can refuse just as silently, and for the branch
+asks for, which the ruleset can refuse just as silently, for the updates it
+asks for it for, and for the branch
 updater, which the ruleset leaves best effort by not requiring branches to be
 up to date.
 
@@ -19,6 +20,7 @@ These tests read files, and run the branch updater's step against a stubbed
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -143,6 +145,76 @@ def test_dependabot_merges_by_a_method_the_ruleset_allows():
     assert methods[0] in allowed, (
         f"{AUTO_MERGE.name} merges by {methods[0]!r}, which the ruleset does "
         f"not allow; it allows {sorted(allowed)}"
+    )
+
+
+def auto_merge_condition():
+    """The `if:` of the step that enables auto-merge."""
+    for job in yaml.safe_load(AUTO_MERGE.read_text())["jobs"].values():
+        for step in job.get("steps", []):
+            if step.get("run", "").split()[:3] == ["gh", "pr", "merge"]:
+                return " ".join(step["if"].split())
+    raise AssertionError(f"{AUTO_MERGE.name} has no step that runs `gh pr merge`")
+
+
+def auto_merge_enabled(**outputs):
+    """Whether that step runs for a pull request whose `fetch-metadata` step
+    reported `outputs`, the `if:` evaluated as written. Only the three
+    operators it uses are translated, and anything else left in the
+    expression is refused rather than guessed at."""
+    expression = re.sub(
+        r"steps\.metadata\.outputs\.([a-z-]+)", r'outputs.get("\1")', auto_merge_condition()
+    )
+    expression = expression.replace("&&", " and ").replace("||", " or ")
+    assert not re.search(r"steps\.|\$\{\{|[!<>]", expression), (
+        f"the condition uses something this test does not translate: {expression}"
+    )
+    return bool(eval(expression, {"outputs": {k.replace("_", "-"): v for k, v in outputs.items()}}))
+
+
+def test_dependabot_auto_merge_covers_semver_bumps_and_the_debian_base_image():
+    """Auto-merge is enabled for minor and patch updates, and for the Debian
+    base image, which is the one update that is not semver: its tag is
+    `trixie-<date>-slim`, which `fetch-metadata` reports with an update type of
+    null, so a rule on the type alone never reached it and its pull requests
+    waited for a person however green they were.
+
+    The metadata below is what the action printed for the first such pull
+    request, and for the cases that must stay out. A major bump keeps waiting.
+    So does anything else with a null type -- a second `FROM`, the same name in
+    another directory or ecosystem -- because the rule is for the one base
+    image and not for every update the semver rule cannot read.
+    """
+    debian = dict(
+        dependency_names="debian", package_ecosystem="docker", directory="/", update_type=None
+    )
+    assert auto_merge_enabled(**debian), "the Debian base image bump is not auto-merged"
+    assert auto_merge_enabled(
+        dependency_names="axllent/mailpit",
+        package_ecosystem="docker",
+        directory="/tests",
+        update_type="version-update:semver-patch",
+    ), "a patch bump is not auto-merged"
+    assert auto_merge_enabled(
+        dependency_names="actions/checkout",
+        package_ecosystem="github-actions",
+        directory="/",
+        update_type="version-update:semver-minor",
+    ), "a minor bump is not auto-merged"
+    assert not auto_merge_enabled(
+        dependency_names="actions/checkout",
+        package_ecosystem="github-actions",
+        directory="/",
+        update_type="version-update:semver-major",
+    ), "a major bump is auto-merged"
+    assert not auto_merge_enabled(**{**debian, "dependency_names": "alpine"}), (
+        "a docker dependency other than debian with no semver type is auto-merged"
+    )
+    assert not auto_merge_enabled(**{**debian, "directory": "/tests"}), (
+        "debian in another directory is auto-merged"
+    )
+    assert not auto_merge_enabled(**{**debian, "package_ecosystem": "pip"}), (
+        "a dependency named debian in another ecosystem is auto-merged"
     )
 
 

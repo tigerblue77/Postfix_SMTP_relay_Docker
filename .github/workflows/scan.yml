@@ -55,9 +55,9 @@ concurrency:
 # A red here would never be attributable to the diff. ci.yml builds only what
 # the tree contains, so a pull request touching "run", a fixture or the README
 # cannot introduce a Debian CVE -- and its author holds no lever either, since
-# the remedy is a base image bump that dependabot.yml deliberately keeps out of
-# auto-merge. Every other gate in this tree -- ShellCheck, Pytest, Build Image
-# -- fails for something its author caused and can fix.
+# the remedy is a base image bump, which Dependabot opens and no contributor's
+# pull request can bring about. Every other gate in this tree -- ShellCheck,
+# Pytest, Build Image -- fails for something its author caused and can fix.
 #
 # And lint.yml's header already wrote the rule this follows: "An unpinned
 # linter fails somebody's unrelated pull request on the day it ships a new
