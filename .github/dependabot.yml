@@ -15,10 +15,12 @@
 # tests/test_ruleset.py, if seven turns out to be too slow. It applies to
 # version updates only: a security update is never delayed. The
 # semver-major/minor/patch-days keys exist for the semver ecosystems only, here
-# pip; github-actions and docker take `default-days` alone. A Dependabot
-# configuration error is not visible from CI: it shows only on the
-# repository's Insights > Dependency graph > Dependabot page, after the merge.
-# tests/test_ruleset.py holds the rest of this to the file.
+# pip; github-actions and docker take `default-days` alone. No workflow here
+# validates this file. Dependabot does, in a check named after the file on a
+# pull request that touches it, which is not a required check, and what it
+# reports once the file is on master shows on the repository's Insights >
+# Dependency graph > Dependabot page. tests/test_ruleset.py holds the rest of
+# this to the file.
 
 version: 2
 updates:

@@ -222,10 +222,11 @@ def test_every_dependabot_update_sets_a_cooldown_and_only_the_base_image_exclude
 def test_dependabot_cooldowns_only_use_keys_their_ecosystem_takes():
     """`semver-major-days`, `-minor-days` and `-patch-days` exist for the
     semver ecosystems only (here pip); github-actions and docker take
-    `default-days`, and `include` and `exclude`, alone. A Dependabot
-    configuration error does not fail any check: it shows only on the
-    repository's Insights > Dependency graph > Dependabot page after the
-    merge, so what can be checked from the file is checked here. pip's major
+    `default-days`, and `include` and `exclude`, alone. No workflow validates
+    the file: Dependabot's own check on a pull request that touches it is not
+    a required one, and what Dependabot reports once the file is on master
+    shows only on the repository's Insights > Dependency graph > Dependabot
+    page, so what can be checked from the file is checked here. pip's major
     releases wait at least as long as its minor and patch ones, which is the
     reason it has the per-level keys at all, and none waits less than the
     minimum.
