@@ -11,7 +11,7 @@ unless they ask for more (issue wader/postfix-relay#58).
 import re
 
 from tests.helpers import (container_exec, container_log, container_stderr,
-                           exit_code_within, file_missing, process_running,
+                           exit_code_within, file_missing, poll_until, process_running,
                            restart, send, wait_for_file, wait_for_log, wait_for_log_line)
 
 # "postfix-script" is one of the programs that log, hyphen and all.
@@ -308,10 +308,18 @@ def test_the_file_log_is_capped_and_keeps_the_file_before(postfix_factory):
                                  'RSYSLOG_LOG_FILE_MAX_SIZE': '4k'})
 
     container_exec(relay, ["sh", "-c", FILLER])
-    wait_for_file(relay, '/var/log/mail.log', 'filler line 1000')
+    # rsyslogd rotates straight after the write that takes the file past the
+    # limit, and creates mail.log again only when the next line arrives. When
+    # that write is the last line, mail.log is not there at all and the line
+    # is the end of mail.log.1, so the last line is looked for in both files,
+    # and a file that is absent for the moment is not an error.
+    both_files = ["sh", "-c", "cat /var/log/mail.log /var/log/mail.log.1 2> /dev/null || true"]
+    poll_until(lambda: 'filler line 1000' in container_exec(relay, both_files),
+               description="the last filler line in mail.log or mail.log.1")
 
-    sizes = container_exec(relay, ["stat", "-c", "%n %s",
-                                   "/var/log/mail.log", "/var/log/mail.log.1"])
+    sizes = container_exec(relay, ["sh", "-c",
+                                   "stat -c '%n %s' /var/log/mail.log "
+                                   "/var/log/mail.log.1 2> /dev/null || true"])
     # Over the limit by up to one buffer, as IO_BUFFER says, and no more: an
     # unrotated file would hold all fifty kilobytes.
     for line in sizes.splitlines():
