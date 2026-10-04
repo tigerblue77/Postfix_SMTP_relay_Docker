@@ -1117,7 +1117,7 @@ changing any of them.
     name instead — `fetch-metadata` reports `dependency-names: debian`,
     `package-ecosystem: docker`, `directory: /` and an `update-type` of null
     for it, read off the run of the first such PR — and enables auto-merge
-    like any other, so what stands between the bump and `master` is the six
+    like any other, so what stands between the bump and `master` are the
     required checks, which run the whole suite against the image the PR
     builds. That merge is made with the `GITHUB_TOKEN`, whose push starts no
     `ci.yml` run on `master` (the mailpit bump merged on 2026-10-03 left none),

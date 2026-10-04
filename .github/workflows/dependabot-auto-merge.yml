@@ -12,8 +12,8 @@
 # than by how far the version moved. Dependabot only offers a tag of the same
 # shape, so this can never move the image to another suite. What stands
 # between such a pull request and master is what stands between any other
-# change and it: the six required checks below, which run the whole suite on
-# both architectures against the image the pull request builds.
+# change and it: the required checks below, which run the whole suite on both
+# architectures against the image the pull request builds.
 #
 # Requirements:
 # - "Allow auto-merge" enabled in the repository settings
