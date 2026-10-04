@@ -3,6 +3,20 @@
 
 # Automatic dependency update pull requests
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+#
+# Every entry carries a `cooldown`, except the Dockerfile's base image (its own
+# comment says why). The auto-merge workflow merges a semver minor or patch
+# bump by itself once the required checks pass, so without a cooldown a
+# release published that morning -- a compromised one included -- would be on
+# master by the evening. A cooldown holds a version update back until the new
+# release is `default-days` old, a few days in which a bad release is usually
+# yanked or reported. It applies to version updates only: a security update is
+# opened at once whatever the cooldown says. The semver-major/minor/patch-days
+# keys exist for the semver ecosystems only, here pip; github-actions and
+# docker take `default-days` alone. A Dependabot configuration error is not
+# visible from CI: it shows only on the repository's Insights > Dependency
+# graph > Dependabot page, after the merge. tests/test_ruleset.py holds the
+# rest of this to the file.
 
 version: 2
 updates:
@@ -10,6 +24,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     groups:
       # Minor and patch bumps are grouped into a single PR that the
       # dependabot-auto-merge workflow merges once CI passes
@@ -52,6 +68,14 @@ updates:
   # tests/test_image.py::test_the_image_is_a_single_debian_release, which
   # fails until it is moved in the same edit as the FROM line.
   #
+  # The one entry without a cooldown, on purpose. This is the official Debian
+  # image rather than a third-party package, a new tag is the way a security
+  # fix reaches the base the image is built on, and the Dockerfile pulls the
+  # packages' own fixes at build time with 'apt-get full-upgrade' (invariant
+  # 37) whatever tag it sits on, so a delay would buy little protection and
+  # cost freshness. tests/test_ruleset.py fails if this entry gains one, or
+  # any other loses theirs, without that test being edited in the same change.
+  #
   # A date is not a semver minor or patch, so these never match the
   # auto-merge rule below and always wait for review, like bump's PRs did.
   - package-ecosystem: docker
@@ -62,10 +86,19 @@ updates:
   # The pinned test dependencies. They are exact pins now, so nothing moves
   # them on its own, and the suite is what says whether a bump is safe: every
   # one of these pull requests runs it.
+  #
+  # A longer wait for a major release, which is the likeliest to break the
+  # suite and the one nobody has used yet; minor and patch wait as long as the
+  # other ecosystems. These keys are for the semver ecosystems only.
   - package-ecosystem: pip
     directory: /tests
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
+      semver-minor-days: 3
+      semver-patch-days: 3
 
   # The two images the suite runs beside the one it builds: mailpit, the server
   # every relayed message is read back from, and the last released
@@ -89,3 +122,7 @@ updates:
     directory: /tests
     schedule:
       interval: weekly
+    # Test peers, but the auto-merge lands a minor or patch bump of them
+    # unattended all the same, so they wait like everything else.
+    cooldown:
+      default-days: 3

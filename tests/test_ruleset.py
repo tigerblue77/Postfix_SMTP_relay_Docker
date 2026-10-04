@@ -11,7 +11,10 @@ context that never reports blocks every pull request until someone with admin
 rights notices. The same goes for the merge method the Dependabot auto-merge
 asks for, which the ruleset can refuse just as silently, and for the branch
 updater, which the ruleset leaves best effort by not requiring branches to be
-up to date.
+up to date. And the auto-merge is only as safe as what reaches it: the update
+entries of `.github/dependabot.yml` each wait out a cooldown, so that a release
+published that morning is not merged that evening, bar the one entry that
+deliberately does not.
 
 These tests read files, and run the branch updater's step against a stubbed
 `gh`; they start no container, so they need no docker daemon.
@@ -30,6 +33,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 RULESET = REPO_ROOT / ".github" / "rulesets" / "master.json"
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 AUTO_MERGE = WORKFLOWS / "dependabot-auto-merge.yml"
+DEPENDABOT = REPO_ROOT / ".github" / "dependabot.yml"
 UPDATER = WORKFLOWS / "auto_update_pull_request_branches.yml"
 MERGE_METHODS = {"--merge": "merge", "--squash": "squash", "--rebase": "rebase"}
 
@@ -144,6 +148,92 @@ def test_dependabot_merges_by_a_method_the_ruleset_allows():
         f"{AUTO_MERGE.name} merges by {methods[0]!r}, which the ruleset does "
         f"not allow; it allows {sorted(allowed)}"
     )
+
+
+def dependabot_updates():
+    """The `updates` entries of `.github/dependabot.yml`, keyed by what makes
+    each one distinct: its ecosystem and the directory it reads."""
+    updates = yaml.safe_load(DEPENDABOT.read_text())["updates"]
+    keyed = {(u["package-ecosystem"], u["directory"]): u for u in updates}
+    assert len(keyed) == len(updates), (
+        "two update entries share an ecosystem and a directory; Dependabot "
+        "refuses the file, and this test could not tell them apart"
+    )
+    return keyed
+
+
+# The Dockerfile's base image, the one entry that goes without a cooldown: it is
+# the official Debian image, a new tag is how a security fix reaches the base
+# the image is built on, and the Dockerfile pulls the packages' own fixes at
+# build time anyway. Its comment in dependabot.yml says the same.
+BASE_IMAGE_UPDATE = ("docker", "/")
+# The ecosystems whose cooldown takes a number of days per semver level; the
+# others take `default-days` alone.
+SEMVER_ECOSYSTEMS = {"pip"}
+SEMVER_DAYS = ("semver-major-days", "semver-minor-days", "semver-patch-days")
+
+
+def test_every_dependabot_update_waits_out_a_cooldown_but_the_base_image():
+    """The auto-merge merges a semver minor or patch bump by itself once the
+    checks pass, so without a cooldown a release published that morning, a
+    compromised one included, is on master by the evening. A cooldown holds a
+    version update back for a few days, and applies to version updates only:
+    a security update is opened at once.
+
+    Every entry carries one, and exactly one does not: the base image of the
+    Dockerfile. Both halves are pinned, so that a new entry cannot be added
+    without a cooldown by forgetting it, and the exemption cannot spread to
+    the entries that are auto-merged by copying the base image's.
+    """
+    updates = dependabot_updates()
+    without = {key for key, u in updates.items() if "cooldown" not in u}
+    assert without == {BASE_IMAGE_UPDATE}, (
+        f"update entries without a cooldown: {sorted(without)}; expected only "
+        f"the base image {BASE_IMAGE_UPDATE}, which has none on purpose. Give "
+        f"the others `cooldown: default-days: <n>`, or, if one is meant to "
+        f"go without, say why in dependabot.yml and in this test"
+    )
+    for key, u in updates.items():
+        if key == BASE_IMAGE_UPDATE:
+            continue
+        days = u["cooldown"].get("default-days")
+        assert isinstance(days, int) and days >= 1, (
+            f"the cooldown of {key} has no `default-days` of at least 1 "
+            f"(got {days!r}), so it holds nothing back"
+        )
+
+
+def test_dependabot_cooldowns_only_use_keys_their_ecosystem_takes():
+    """`semver-major-days`, `-minor-days` and `-patch-days` exist for the
+    semver ecosystems only (here pip); github-actions and docker take
+    `default-days`, and `include` and `exclude`, alone. A Dependabot
+    configuration error does not fail any check: it shows only on the
+    repository's Insights > Dependency graph > Dependabot page after the
+    merge, so what can be checked from the file is checked here. pip's major
+    releases wait at least as long as its minor and patch ones, which is the
+    reason it has the per-level keys at all.
+    """
+    for (ecosystem, directory), u in dependabot_updates().items():
+        cooldown = u.get("cooldown", {})
+        takes = {"default-days", "include", "exclude"}
+        if ecosystem in SEMVER_ECOSYSTEMS:
+            takes |= set(SEMVER_DAYS)
+        stray = set(cooldown) - takes
+        assert not stray, (
+            f"the {ecosystem} entry on {directory} gives its cooldown {sorted(stray)}, "
+            f"which that ecosystem does not take; it takes {sorted(takes)}"
+        )
+        if ecosystem in SEMVER_ECOSYSTEMS:
+            major, minor, patch = (cooldown.get(k) for k in SEMVER_DAYS)
+            assert all(isinstance(d, int) for d in (major, minor, patch)), (
+                f"the {ecosystem} cooldown sets {SEMVER_DAYS} to "
+                f"{(major, minor, patch)}; every level needs a number of days"
+            )
+            assert major >= minor >= patch >= 1, (
+                f"the {ecosystem} cooldown waits {major}, {minor} and {patch} "
+                f"days for a major, minor and patch release; a major release "
+                f"should wait at least as long as a minor one, and none may be zero"
+            )
 
 
 def test_branches_are_not_required_to_be_up_to_date():
