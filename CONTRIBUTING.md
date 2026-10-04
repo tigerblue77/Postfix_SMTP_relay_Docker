@@ -77,7 +77,7 @@ If you are a contributor rather than the maintainer, most of this does not conce
 
 ## Licence headers
 
-Every source file carries a two-line [SPDX](https://spdx.dev/) header: right after the shebang in a script, at the very top of a Python module, a workflow, `.github/dependabot.yml` or the `Dockerfile`, and in an HTML comment at the top of this page and of [`LICENSE-COMMERCIAL.md`](./LICENSE-COMMERCIAL.md). The JSON files, `pytest.ini`, `tests/requirements.txt`, the ignore files, the licence texts and the rest of the documentation carry none.
+Every source file carries a two-line [SPDX](https://spdx.dev/) header: right after the shebang in a script, at the very top of a Python module, a workflow, `.github/dependabot.yml`, `.github/actionlint.yaml`, `.github/zizmor.yml` or the `Dockerfile`, and in an HTML comment at the top of this page and of [`LICENSE-COMMERCIAL.md`](./LICENSE-COMMERCIAL.md). The JSON files, `pytest.ini`, `tests/requirements.txt`, the ignore files, the licence texts and the rest of the documentation carry none.
 
 ```bash
 #!/bin/bash
@@ -95,5 +95,5 @@ Do not add your own copyright line: the collective notice above already covers e
 - Run the test suite: `pytest`, from the repository root, with a Docker daemon running. The README's [Testing](./README.md#testing) section has the setup.
 - Sign off every commit, as [above](#sign-your-work--developer-certificate-of-origin).
 - Add a test for what you changed. Behaviour the README promises is pinned by a test here, and a behaviour with no test is one the next change is free to break.
-- Keep the two linters quiet: `shellcheck -S error run healthcheck .claude/hooks/session-start.sh .github/check_sign_off.sh` and `ruff check --no-cache --select F,B tests`. CI runs both on every pull request.
+- Keep the linters quiet: `shellcheck -S error run healthcheck .claude/hooks/session-start.sh .github/check_sign_off.sh`, `ruff check --no-cache --select F,B tests`, and, for the workflows and `.github/dependabot.yml`, `"$(go env GOPATH)/bin/actionlint" -shellcheck= -pyflakes=` and `zizmor --offline --strict-collection .`. CI runs all four on every pull request, and the last two are required checks once the ruleset in `.github/rulesets/master.json` is imported.
 - If your change makes the README or `CLAUDE.md` wrong, the change is not finished.

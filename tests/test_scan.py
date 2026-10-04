@@ -24,6 +24,7 @@ Like `test_ruleset.py` these read files and start nothing, so they are part of
 the small half of the suite that needs no docker daemon.
 """
 
+import os
 import re
 from pathlib import Path
 
@@ -297,3 +298,155 @@ def test_every_workflow_states_what_its_token_may_do():
 
     assert workflows
     assert not silent, f"workflows leaving their token to the repository default: {silent}"
+
+
+# Checkouts that keep the job token for the steps after them, as
+# {(file, job, step): why}, one entry per step: a job with two checkouts needs
+# two entries, and the one that is not listed is still refused. The step is its
+# `name:`, or "step N" when it has none. Empty, and meant to stay so: a checkout
+# belongs here only when a later step of the same job runs `git push`, or a
+# `git fetch` through the remote, and has nothing else to authenticate with. The
+# reason says which step, so that the next person to touch that job knows what
+# removing the entry would break.
+PERSISTED_CHECKOUTS = {}
+
+# Directories no action or workflow lives in, and a walk of the tree should not
+# enter: a virtualenv or a vendored package may hold hundreds of action.yml.
+SKIPPED_DIRECTORIES = {".git", ".venv", "venv", "node_modules"}
+
+
+def checkout_steps(root=REPO_ROOT):
+    """Every `actions/checkout` step, as ((file, job, step), step).
+
+    The workflows are `.github/workflows/*.yml` and `*.yaml` -- github reads
+    both -- and the composite actions are every `action.yml` and `action.yaml`
+    under the root, wherever they sit, since a local action can be used from
+    anywhere (`uses: ./path`). A composite action has no job, so its place in the
+    key is "(composite action)". The name of the action is matched without regard
+    to case, because github resolves `Actions/Checkout` to the same action.
+    """
+    found = []
+
+    def collect(file, job, steps):
+        seen = set()
+        for number, step in enumerate(steps or [], start=1):
+            label = step.get("name") or f"step {number}"
+            if label in seen:
+                label = f"{label} (step {number})"
+            seen.add(label)
+            if str(step.get("uses", "")).lower().startswith("actions/checkout@"):
+                found.append(((file, job, label), step))
+
+    for path in sorted((root / ".github" / "workflows").glob("*.y*ml")):
+        for job, body in (yaml.safe_load(path.read_text()) or {}).get("jobs", {}).items():
+            collect(path.name, job, body.get("steps"))
+    for directory, directories, files in os.walk(root):
+        directories[:] = sorted(d for d in directories if d not in SKIPPED_DIRECTORIES)
+        for name in sorted(files):
+            if name in ("action.yml", "action.yaml"):
+                path = Path(directory, name)
+                action = yaml.safe_load(path.read_text()) or {}
+                collect(path.relative_to(root).as_posix(), "(composite action)",
+                        (action.get("runs") or {}).get("steps"))
+    return found
+
+
+def drops_the_token(step):
+    """Whether the step sets `persist-credentials` to false: the boolean, or
+    the string github reads as one. An expression is not accepted, since it can
+    turn into anything."""
+    value = (step.get("with") or {}).get("persist-credentials")
+    return value is False or (isinstance(value, str) and value.strip().lower() == "false")
+
+
+def checkout_problems(root, allowed):
+    """What is wrong with the checkouts under `root`, given an allow-list."""
+    kept = {where for where, step in checkout_steps(root) if not drops_the_token(step)}
+    problems = [f"{where} leaves the job token to the steps after it" for where in sorted(kept - set(allowed))]
+    problems += [f"{where} is on the allow-list but no longer keeps the token" for where in sorted(set(allowed) - kept)]
+    problems += [f"{where} is on the allow-list with no reason" for where, why in sorted(allowed.items())
+                 if not (isinstance(why, str) and why.strip())]
+    return problems
+
+
+def test_every_checkout_drops_the_job_token_or_says_which_step_needs_it():
+    """`actions/checkout` sets up a credential for the steps after it unless
+    told not to: it writes the job's token to a credentials file in the
+    runner's temp directory, outside the workspace, points `.git/config` at that
+    file with `includeIf` entries, and removes both when the job ends. Until
+    then any later step of the job inherits it, through git or through the
+    file. With `persist-credentials: false` the action removes that credential
+    right after its own fetch (the "Removing auth" group of its log), so no later
+    step inherits it. That is all it does: a step that names
+    `secrets.GITHUB_TOKEN`, a registry login for one, still has the token.
+    zizmor's `artipacked` audit flags the default however the action stores it.
+    Nothing here needs the credential the checkout sets up: no
+    job with one pushes or fetches through git, the registry logins are the
+    actions' own, the `gh` steps carry their own `GH_TOKEN`, and the one
+    `git ls-remote`, in `ci.yml`'s promote job, runs in a job with no checkout at
+    all. So each checkout sets `persist-credentials: false`, and the exceptions
+    are PERSISTED_CHECKOUTS above, one step each, with the reason written next to
+    it.
+    """
+    assert checkout_steps(REPO_ROOT), "no actions/checkout step found at all; the walk is broken"
+    assert not checkout_problems(REPO_ROOT, PERSISTED_CHECKOUTS)
+
+
+def test_the_checkout_rule_sees_every_place_a_checkout_can_be(tmp_path):
+    """The rule above is only as good as its walk, so each way a checkout can
+    hide is planted in a throwaway tree and has to be found: a workflow with the
+    other yaml extension, an action name in capitals, composite actions at the
+    root and deep in the tree, the same job with one checkout that is fine and
+    one that is not, a flag that is an expression, and an allow-list entry with
+    no reason or for a step that does not keep the token. What is fine -- the
+    boolean, the string, and a directory the walk skips -- is not flagged.
+    """
+    def write(path, text):
+        path = tmp_path / path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    steps = "    steps:\n      - name: Checkout\n        uses: {uses}\n{with_}"
+    flagged = "        with:\n          persist-credentials: {value}\n"
+    workflow = "on: push\njobs:\n  job:\n    runs-on: ubuntu-latest\n" + steps
+    write(".github/workflows/plain.yml", workflow.format(uses="actions/checkout@v7", with_=flagged.format(value="false")))
+    write(".github/workflows/string.yml", workflow.format(uses="actions/checkout@v7", with_=flagged.format(value="'false'")))
+    write(".github/workflows/yaml-extension.yaml", workflow.format(uses="actions/checkout@v7", with_=""))
+    write(".github/workflows/capitals.yml", workflow.format(uses="Actions/Checkout@v7", with_=""))
+    write(".github/workflows/expression.yml",
+          workflow.format(uses="actions/checkout@v7", with_=flagged.format(value="${{ inputs.persist }}")))
+    write(".github/workflows/two.yml",
+          "on: push\njobs:\n  job:\n    runs-on: ubuntu-latest\n    steps:\n"
+          "      - name: Fine\n        uses: actions/checkout@v7\n        with:\n          persist-credentials: false\n"
+          "      - name: Not fine\n        uses: actions/checkout@v7\n")
+    composite = "name: x\ndescription: x\nruns:\n  using: composite\n  steps:\n    - uses: actions/checkout@v7\n      shell: bash\n"
+    write("action.yml", composite)
+    write("deep/er/action.yaml", composite)
+    write("node_modules/package/action.yml", composite)
+
+    expected = {
+        ("yaml-extension.yaml", "job", "Checkout"),
+        ("capitals.yml", "job", "Checkout"),
+        ("expression.yml", "job", "Checkout"),
+        ("two.yml", "job", "Not fine"),
+        ("action.yml", "(composite action)", "step 1"),
+        ("deep/er/action.yaml", "(composite action)", "step 1"),
+    }
+    seen = {where for where, step in checkout_steps(tmp_path)}
+    assert expected < seen and not any("node_modules" in w[0] for w in seen), sorted(seen)
+    problems = checkout_problems(tmp_path, {})
+    assert len(problems) == len(expected), problems
+    for where in expected:
+        assert any(str(where) in problem for problem in problems), (where, problems)
+
+    allowed = {where: "a later step runs git push" for where in expected}
+    assert checkout_problems(tmp_path, allowed) == []
+    assert checkout_problems(tmp_path, {**allowed, ("two.yml", "job", "Not fine"): "  "}) == [
+        "('two.yml', 'job', 'Not fine') is on the allow-list with no reason"
+    ]
+    assert checkout_problems(tmp_path, {**allowed, ("plain.yml", "job", "Checkout"): "why"}) == [
+        "('plain.yml', 'job', 'Checkout') is on the allow-list but no longer keeps the token"
+    ]
+    assert checkout_problems(tmp_path, {k: v for k, v in allowed.items() if k != ("two.yml", "job", "Not fine")}) == [
+        "('two.yml', 'job', 'Not fine') leaves the job token to the steps after it"
+    ]

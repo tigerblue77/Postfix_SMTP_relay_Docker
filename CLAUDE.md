@@ -41,7 +41,7 @@ which is where contributor branches lived then.
 | `.claude/hooks/session-start.sh` | Starts the docker daemon and installs `tests/requirements.txt`, because a Claude Code on the web container has neither and both gates need them. Guarded on `CLAUDE_CODE_REMOTE=true`, so a local checkout is untouched, and best-effort: a failed step explains itself on stderr and the hook still exits 0, so check stderr before believing a build or test failure. Before either, and only where `origin` is `tigerblue77`'s repository, it sets the repository-local identity a commit here needs: `Claude <noreply@anthropic.com>` as the author and a `git signoff` alias carrying the maintainer's `Signed-off-by` — see [Conventions](#conventions). On the maintainer's copy it also reminds the session, on stdout, that an issue or pull request opened here is assigned to `tigerblue77` and is never a draft; on a fork it sets nothing, says nothing of that rule, and says so. |
 | `tests/__init__.py` | Empty; makes `tests` a package, which is what lets `conftest.py` name plugins as `tests.fixtures.*` and lets modules do `from tests.helpers import …`. pytest therefore has to be run from the repo root. There is no `tests/fixtures/__init__.py`. |
 | `tests/conftest.py` | Registers the four fixture modules as pytest plugins, and defines the failure plumbing: `print_log_on_failure`, the `container_output` it prints, an autouse `shared_container_logs` fixture, and a `pytest_runtest_makereport` wrapper hook that stashes the report on the item. What a teardown prints is shown only beside a failed test body, never beside an error in a fixture, so a relay that does not come up is reported by `_start` with its log in the failure itself. |
-| `tests/helpers.py` | The shared vocabulary — `poll_until`, `once_across_workers`, `wait_for_smtp`, `send`, `container_exec`, `postconf`, `listening_ports`, `exit_code_within` and the rest. Imported by every test module but `test_sendmail.py`, `test_ruleset.py`, `test_ci.py`, `test_scan.py`, `test_sign_off.py`, `test_lint.py` and `test_claude_code_settings.py`, and by three of the four fixture modules. `file_missing` is the one that cannot be spelled with `container_exec`, which fails on a non-zero exit: asking whether a path is absent needs the exit code, not the output. |
+| `tests/helpers.py` | The shared vocabulary — `poll_until`, `once_across_workers`, `wait_for_smtp`, `send`, `container_exec`, `postconf`, `listening_ports`, `exit_code_within` and the rest. Imported by every test module but `test_sendmail.py`, `test_ruleset.py`, `test_ci.py`, `test_scan.py`, `test_sign_off.py`, `test_lint.py`, `test_lint_workflows.py` and `test_claude_code_settings.py`, and by three of the four fixture modules. `file_missing` is the one that cannot be spelled with `container_exec`, which fails on a non-zero exit: asking whether a path is absent needs the exit code, not the output. |
 | `tests/requirements.txt` | Seven pinned packages: `dkimpy`, `docker`, `pytest`, `pytest-xdist`, `pyyaml`, `requests`, `testcontainers[mailpit]`. `dkimpy` is what satisfies `import dkim`, so grepping module names against this file looks like a miss when it is not; `pyyaml` is there for `test_ruleset.py` alone. |
 | `tests/fixtures/shared_network.py` | Session-scoped `shared_network`: a testcontainers `Network()` with a generated, labelled name — not a fixed one, so an interrupted run leaves nothing for the next one to collide with. |
 | `tests/fixtures/postfix.py` | Seven fixtures: `postfix_image`, `upgrade_from_image`, `postfix` and `_relay_pool` (session, the last being the per-configuration relay pool); `postfix_factory`, `postfix_shared` and `docker_volume` (function). Every relay gets `POSTFIX_relayhost=mailpit:1025`, set before the caller's env so a test can override it; readiness is an SMTP connection, not a log line. Reads `POSTFIX_RELAY_IMAGE` / `POSTFIX_RELAY_ARCH` / `POSTFIX_RELAY_IMAGE_PUBLISHED`, and the released image out of `tests/upgrade-from.Dockerfile`. |
@@ -49,28 +49,32 @@ which is where contributor branches lived then.
 | `tests/upgrade-from.Dockerfile` | The other unbuilt anchor: one `FROM mwader/postfix-relay:<version>` line, read back by `tests/fixtures/postfix.py`, naming the released image `tests/test_upgrade.py` starts before the one built from the tree. A release and not `latest` — see invariant 33. |
 | `tests/fixtures/mailpit.py` | The remote-SMTP stand-in, whose image is read from `tests/mailpit.Dockerfile` rather than written here: a `Mailpit` REST client class plus `mailpit_image` and `mailpit_container` (session), `mailpit` and `mailpit_factory` (function). Also rebinds the library's `wait_for_logs` to a `functools.partial` with a shorter poll interval. |
 | `tests/fixtures/smtp.py` | `smtplib` client against the shared `postfix` relay's mapped port 25. Function-scoped on purpose: the tests about rejected mail leave the connection broken. |
-| `tests/test_*.py` | `capabilities`, `ci`, `claude_code_settings`, `client_tls`, `config`, `defaults`, `dkim`, `healthcheck`, `image`, `lifecycle`, `lint`, `logging`, `postmaster`, `qshape`, `ruleset`, `sasl`, `scan`, `secrets`, `sendmail`, `sign_off`, `smtp`, `srs`, `upgrade`. Each has a row in the README's per-file table. |
+| `tests/test_*.py` | `capabilities`, `ci`, `claude_code_settings`, `client_tls`, `config`, `defaults`, `dkim`, `healthcheck`, `image`, `lifecycle`, `lint`, `lint_workflows`, `logging`, `postmaster`, `qshape`, `ruleset`, `sasl`, `scan`, `secrets`, `sendmail`, `sign_off`, `smtp`, `srs`, `upgrade`. Each has a row in the README's per-file table. |
 | `tests/img/postfix-logo.png` | The inline image `tests/test_sendmail.py` attaches, and compares byte for byte on the way out. |
 | `.github/workflows/ci.yml` | `name: ci`. Four jobs. `docker`, displayed as **Build Image**: buildx over `linux/amd64,linux/arm/v7,linux/arm64/v8`, GHA build cache, a `docker_meta` that states `org.opencontainers.image.licenses=AGPL-3.0-only` itself because its labels win over the `Dockerfile`'s, nothing pushed from a branch or a pull request and no tag named after the ref (invariant 38), and on `master` the tag it pushes is docker_meta's `sha-<commit>` — never `latest`, and on a tag ref nothing at all: a release builds nothing and instead points the version tags at the `sha-<commit>` image `master` already published and verified. Every tag goes to Docker Hub and to its mirror on GHCR, `ghcr.io/<owner>/<image>`, in the same push; the job's token carries `packages: write` for the mirror and `contents: read` besides, nothing else. `verify_published_amd64` and `verify_published_arm64`, displayed as **Verify Published Image (amd64)** and **(arm64)**: `needs: docker`, `master` only, each pulls by digest the image that was just pushed and runs `pytest -m smoke` against it — or the *whole* suite when the run is a `no-cache` rebuild, which `test.yml` never sees (invariant 36); the amd64 one first asserts the published manifest lists the three platforms the build asks for. `promote`, displayed as **Publish latest**: `master` only, `needs` all three, and points `latest` at that digest with `imagetools create`, on the mirror first and then on Docker Hub — after checking the commit is still `master`'s head, since master runs are not cancelled and two of them would otherwise race to write the tag. Spelled out rather than a matrix, for the reason test.yml gives — the job name is what a required status check and the auto-merge workflow match on — and for one of its own: a matrix expands `${{ matrix.arch }}` only in the runs it starts, so a pull request, where the `if` skips the job whole, reported the raw expression as the check's name. The workflow also takes a `workflow_dispatch` with one boolean input, `no-cache`, wired into both build steps — the remediation lever for an **Image Scan** finding, and the three jobs above verify and tag what it republishes. |
 | `.github/workflows/test.yml` | `name: test`. Four jobs: **Event File**, **Pytest**, **Pytest (arm64)** and **Pytest (arm/v7, emulated)**. Spelled out rather than written as a matrix; the file says why. |
 | `.github/workflows/test-results.yml` | On `workflow_run` of `test`, downloads the junit artifacts and publishes them as the **Test Results** check. |
-| `.github/workflows/lint.yml` | `name: lint`. Two jobs, each pinned and checksummed: `shellcheck`, displayed as **ShellCheck**, runs `shellcheck -S error` over `run`, `healthcheck`, the session-start hook and the sign-off check — the only threshold the image scripts pass; `ruff`, displayed as **Ruff**, runs `ruff check --no-cache --select F,B tests` — pyflakes and bugbear over all the python in the tree. The only two linters there are, and neither reads a config file. |
+| `.github/workflows/lint.yml` | `name: lint`. Two jobs, each pinned and checksummed: `shellcheck`, displayed as **ShellCheck**, runs `shellcheck -S error` over `run`, `healthcheck`, the session-start hook and the sign-off check — the only threshold the image scripts pass; `ruff`, displayed as **Ruff**, runs `ruff check --no-cache --select F,B tests` — pyflakes and bugbear over all the python in the tree. The two linters for what ships and for the python; the workflows have their own, in `lint-workflows.yml`. Neither reads a config file. |
+| `.github/workflows/lint-workflows.yml` | `name: lint-workflows`. Two jobs, on `pull_request`, `workflow_dispatch` and a push to `master`, with no path filter so that both checks report on every pull request: `actionlint`, displayed as **actionlint**, installs v1.7.12 with `go install` — the Go checksum database authenticates the module, and Go fetches the newer toolchain that version asks for the same way — and runs `actionlint -shellcheck= -pyflakes=`, the integrations off because they only run when the runner has them and because the shell in a `run:` block is not what the **ShellCheck** gate reads; `zizmor`, displayed as **zizmor**, installs 1.30.1 from PyPI into a virtualenv with `--require-hashes --only-binary :all:` against the hash of the manylinux_2_28 x86_64 wheel, and runs `zizmor --offline --strict-collection --format github .` — offline, because the online audits query advisory databases whose answers change daily, which would turn a required check red for a reason that is in no pull request, at the price of five audits (see Lint: a green zizmor is not a scan for vulnerable actions), and strict, because otherwise a file zizmor cannot parse is skipped with a warning and the check stays green. The names are lower case on purpose: they are what the ruleset matches. |
+| `.github/actionlint.yaml` | The configuration actionlint finds by itself. One suppression, two messages about one step: actionlint 1.7.12's table of the popular actions' inputs predates `client-id` on `actions/create-github-app-token@v3`, so it asks for `app-id` and has never heard of the input the branch updater passes. The step is right and the table is stale; drop both lines when the pinned actionlint knows the v3 inputs. |
+| `.github/zizmor.yml` | The configuration zizmor finds by itself. `unpinned-uses` takes `ref-pin` for every action, because actions are pinned to a version tag and not to a commit hash, which is the maintainer's decision, with one exception that stays as it is, `EnricoMi/publish-unit-test-result-action`, pinned to a commit, and nothing else is configured: `dependabot-cooldown` keeps zizmor's default threshold of seven days, which is what `dependabot.yml` sets. `ref-pin` accepts any ref, a branch such as `@main` included, so it enforces that an action has a ref and not that the ref is a version tag. Nothing is turned off. Its one suppression is not here but inline, in `test-results.yml`: `# zizmor: ignore[dangerous-triggers]` on the `workflow_run` trigger, argued in that file's header. |
 | `.github/workflows/scan.yml` | `name: scan`. One job, `trivy`, displayed as **Image Scan**: on a daily `schedule:` and on `workflow_dispatch`, downloads a pinned, checksummed trivy and scans the *published* image at `--ignore-unfixed --severity HIGH,CRITICAL`. The only workflow with a `schedule:`, and the only one that reports nothing on a pull request at all — `test-results.yml` has no `pull_request` trigger either, but its `workflow_run` on `test` puts a check there anyway. Files one issue when it finds something and closes it when it stops, which is the only thing in the tree that writes to the tracker; each of the first `MAX_REBUILD_ATTEMPTS` runs that finds the issue still open also dispatches **ci.yml** on `master` with `no-cache` set, *waits for that run* and re-scans what it published, so the run that applied the remedy is the one that closes the issue rather than the next morning's — see invariant 36. The waiting is why its `timeout-minutes` is the longest of any job that waits on another workflow — the branch updater's is longer, but it sleeps on a clock and waits on no workflow — and why the wait has a bound of its own well inside it: a job killed by `timeout-minutes` is *cancelled* rather than failed, and github's notification for a scheduled run fires on failure. |
 | `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates, by squash because `master` refuses a merge commit. Its header comment records the check names that *exist* and what it needs from the repository settings and the ruleset; which of them are *required* is the ruleset below. |
 | `.github/workflows/auto_update_pull_request_branches.yml` | On every push to `master`, and on `workflow_dispatch`; no `schedule:`. A push starts a run whose first step sleeps `QUIET_PERIOD_MINUTES` (an hour), and the next push cancels it, so only the run that follows the last push of a series wakes up and rebases every open, conflict-free, non-draft pull request that `master` left behind, so that the checks a reviewer reads describe the `master` it would land on. A pull request that conflicts gets one comment, found again by a marker so that it is written once and deleted when the conflict is gone. A run started by hand does not wait. Best effort, and not required: "Require branches to be up to date" is off, and Dependabot's pull requests are left to Dependabot, since a rebase pushed by anyone else strips the signature the auto-merge checks. Its header says why it needs a GitHub App or a personal access token rather than the `GITHUB_TOKEN`, why the conflict comment has to come from the App, and what the sleep costs. |
-| `.github/workflows/sign_off.yml` | `name: sign-off`. One job, displayed as **Sign-off**, on `pull_request` only: checks out with `fetch-depth: 0` and runs `.github/check_sign_off.sh` over the pull request's base and head. Not on `master`, whose squashes no longer carry the branch's trailers and whose older history is unsigned, and not on `workflow_dispatch`, which has no range. |
+| `.github/workflows/sign_off.yml` | `name: sign-off`. One job, displayed as **Sign-off**, on `pull_request` only: checks out with `fetch-depth: 0` (and, like every checkout, `persist-credentials: false`) and runs `.github/check_sign_off.sh` over the pull request's base and head. Not on `master`, whose squashes no longer carry the branch's trailers and whose older history is unsigned, and not on `workflow_dispatch`, which has no range. |
 | `.github/check_sign_off.sh` | The decision the **Sign-off** check reports: every non-merge commit in `base..head` carries a well-formed `Signed-off-by` read through git's own trailer parser, every commit the agent authored carries the maintainer's sign-off, so the tool never certifies its own work, and no commit names the agent as a co-author of somebody else's work. Fails closed — an empty or unreadable range is a refusal, not a pass — and is the one script in the tree under `set -e`, for that reason. |
 | `LICENSE` | The GNU Affero General Public License v3.0 text, unmodified. The project is `AGPL-3.0-only`; it was MIT until the commit that added `NOTICE`. |
 | `NOTICE` | Collective copyright, the MIT notice of the code this repository started from (reproduced in full, as that licence requires), the third-party software aggregated in the image, the licence history, and the attribution clause. Copied into the image with `LICENSE` and `LICENSE-COMMERCIAL.md`. |
 | `LICENSE-COMMERCIAL.md` | The offer of a separate commercial licence, with the table of when one is and is not needed. Not itself a licence. |
 | `CONTRIBUTING.md` | The terms a contribution arrives under — AGPL to the public plus a licence to the maintainer to offer it commercially too, which is what keeps the commercial arm grantable — the Developer Certificate of Origin every commit signs off, with who signs what when an agent wrote it, and the SPDX header every source file carries. |
 | `SECURITY.md` | Where to report a vulnerability, and — the half that is actually load-bearing — what is *not* one here: the open relay default (invariant 23), no client TLS, starting as root, and a scanner row with no fixed version. Without that, a policy invites reports about behaviour the README documents as deliberate. Names no address: it points at github's private vulnerability reporting, which needs a repository setting rather than a file. |
-| `.github/dependabot.yml` | `github-actions` weekly (grouped minor/patch and major), `docker` daily for the base image, `pip` weekly for the pinned test dependencies in `tests/`, `docker` weekly on `/tests`, which covers both anchors there. |
-| `.github/rulesets/master.json` | The live `master` ruleset, "Protect master branch", in github's export/import form less the `id` and `source` fields an export adds: no deletion, no force-push, pull requests only with no approval required, a linear history, and the six required status checks. Conditioned on `~DEFAULT_BRANCH` rather than a literal `refs/heads/master`, so renaming the default branch does not quietly stop gating it. `tests/test_ruleset.py` is what keeps it true; nothing else in the tree reads it. It is the record that makes "CI blocks a bad pull request" checkable instead of believed, and it is what gets imported under Settings > Rules. |
+| `.github/dependabot.yml` | `github-actions` weekly (grouped minor/patch and major), `docker` daily for the base image, `pip` weekly for the pinned test dependencies in `tests/`, `docker` weekly on `/tests`, which covers both anchors there. Every entry sets a `cooldown` of seven days (pip: fourteen for a major), the base image included, instead of the three Dependabot applies by default — an entry without the block is not exempt, it gets those three — and none excludes a dependency; security updates are never delayed. The actions are pinned to major tags, for which Dependabot proposes only the next major, so the cooldown only delays that proposal and cannot hold back a moved floating tag. No workflow validates this file: Dependabot's own check, named after the file, runs on a pull request that touches it and is not required, and what Dependabot reports once the file is on `master` shows on the repository's Insights > Dependency graph > Dependabot page — so `tests/test_ruleset.py` pins what can be checked from the file. |
+| `.github/rulesets/master.json` | The live `master` ruleset, "Protect master branch", in github's export/import form less the `id` and `source` fields an export adds: no deletion, no force-push, pull requests only with no approval required, a linear history, and the required status checks, which [What blocks a pull request](#what-blocks-a-pull-request) lists. Conditioned on `~DEFAULT_BRANCH` rather than a literal `refs/heads/master`, so renaming the default branch does not quietly stop gating it. `tests/test_ruleset.py` is what keeps it true; nothing else in the tree reads it. It is the record that makes "CI blocks a bad pull request" checkable instead of believed, and it is what gets imported under Settings > Rules. |
 
-There is no linter *config* of any kind — `lint.yml` passes both linters their
-selection on the command line. Every source file carries an SPDX licence
-header — see [Conventions](#conventions).
+There is no linter *config* for shellcheck or ruff — `lint.yml` passes both
+their selection on the command line — and the two for the workflows have one
+file each, `.github/actionlint.yaml` and `.github/zizmor.yml`. Every source
+file carries an SPDX licence header — see [Conventions](#conventions).
 
 ## Dependency graph
 
@@ -94,7 +98,8 @@ tests/test_*.py
     │
     ├──> tests/helpers.py         (every module but test_sendmail.py, and
     │                              test_ruleset.py, test_ci.py, test_scan.py,
-    │                              test_sign_off.py, test_lint.py and
+    │                              test_sign_off.py, test_lint.py,
+    │                              test_lint_workflows.py and
     │                              test_claude_code_settings.py, which start
     │                              no container)
     │        └── once_across_workers  -> builds/pulls the image once per RUN,
@@ -186,9 +191,9 @@ it only ever builds the host's — follow the cross-build recipe in
 failure there means the same thing.
 
 Six modules run without a docker daemon: `test_ruleset.py`, which reads
-`.github/rulesets/master.json` and the workflows, `test_ci.py`, which reads
-`.github/workflows/ci.yml` and the `Dockerfile` and runs two of its steps
-against a stubbed `docker`, `test_scan.py`, which reads
+`.github/rulesets/master.json`, `.github/dependabot.yml` and the workflows,
+`test_ci.py`, which reads `.github/workflows/ci.yml` and the `Dockerfile` and
+runs two of its steps against a stubbed `docker`, `test_scan.py`, which reads
 `.github/workflows/scan.yml`, `test_lint.py`, which compares the scripts
 `.github/workflows/lint.yml` names with the ones git tracks,
 `test_claude_code_settings.py`, which reads `.claude/settings.json`, and
@@ -200,6 +205,14 @@ inspect` output through `image_config`, asks a throwaway `sleep` container
 about the image's files through its `image_shell` fixture, and runs a command
 in one with `image_run`. When a test fails, `conftest.py` prints the logs of
 the containers it used, so `-o log_cli=true` is rarely what you want.
+
+A seventh that starts none, `test_lint_workflows.py`, reads
+`.github/workflows/lint-workflows.yml`, the ruleset and the two linters'
+configuration, and holds the workflow linters' pins and flags, and what they are
+allowed to let through, to what is argued for in the file. That includes what
+justifies the one inline ignore: `test-results.yml` keeps its `workflow_run` as
+the only trigger, with no checkout, no script and a five-permission token,
+because the ignore exempts the whole `on:` block.
 
 ### Build
 
@@ -225,7 +238,42 @@ shellcheck run healthcheck                 # everything, at the stock threshold
 
 ruff check --no-cache --select F,B tests   # what CI runs; exits 0
 ruff check --statistics --select ALL tests # everything ruff has, for reference
+
+"$(go env GOPATH)/bin/actionlint" -shellcheck= -pyflakes=   # what CI runs; exits 0
+zizmor --offline --strict-collection .     # what CI runs, minus the annotations
 ```
+
+The last two lint the workflows and `.github/dependabot.yml`, and are
+`lint-workflows.yml`'s business rather than the ones above's: **actionlint**
+and **zizmor** are required checks. actionlint 1.7.12 is built by `go install
+github.com/rhysd/actionlint/cmd/actionlint@v1.7.12` and needs Go 1.25 or
+newer, which Go downloads for itself when the installed one is older. The
+binary lands in `$(go env GOPATH)/bin`, which is not on `PATH` in a Claude Code
+on the web session, hence the full path above. zizmor 1.30.1 is `pip install`
+of the pinned wheel, which `lint-workflows.yml` does with its hash. Both read
+their configuration without being told where it is,
+and run from the repository root. Their suppressions are three — the two
+actionlint messages in `.github/actionlint.yaml` and the `dangerous-triggers`
+comment in `test-results.yml` — and `tests/test_lint_workflows.py` fails when
+that list changes without being edited there, so a new one is a decision to
+argue rather than a line to append.
+
+What a green **zizmor** does not mean. `--offline` skips five audits
+(`zizmor --offline -vv` lists them), `impostor-commit`,
+`known-vulnerable-actions`, `ref-confusion`, `stale-action-refs` and
+`ref-version-mismatch`, which are the ones that ask GitHub or an advisory
+database about the actions a workflow uses, or about the version comment beside
+a commit pin; so it is not a scan for vulnerable or moved actions, and a
+floating tag that moves is seen by nothing here. The
+`unpinned-uses` policy is `ref-pin`, which accepts any ref, a branch included.
+And the default persona hides the pedantic and auditor findings: 29 on this
+tree under `--persona auditor`, left alone — `secrets-outside-env` (11, in
+`ci.yml`, `scan.yml` and the branch updater: secrets read by a step rather than
+a job-level environment), `undocumented-permissions` (6), `template-injection`
+(5, `${{ github.repository }}` and the like in `run:`, which an attacker does not
+control), `excessive-permissions` (4, in `dependabot-auto-merge.yml` and
+`scan.yml`), `concurrency-limits` (2) and `anonymous-definition` (1). (issue
+#103)
 
 `run` and `healthcheck` are the two scripts that go into the image, and
 `.github/workflows/lint.yml` gates them at `-S error` on every pull request —
@@ -308,17 +356,19 @@ as many under 0.16.6, while `F,B` is clean on both. A ratio rather than two
 counts, for the reason the sentence above gives: it is the gap that is being
 pointed at, and the gap does not move. Nothing bumps that pin either.
 
-There is still no linter *configuration* anywhere in the repo (no
+There is still no configuration for shellcheck or ruff anywhere in the repo (no
 `.shellcheckrc`, `.hadolint.yaml`, `pyproject.toml`, `setup.cfg`, `tox.ini`,
 `.flake8`, `.ruff.toml` or `.pre-commit-config.yaml`) and no in-file
-`# shellcheck disable=`, so nothing is suppressed: what the gates let through,
-they let through because of the threshold and the selection alone. The tree's
-one suppression is a `# noqa: BLE001` in `tests/test_smtp.py`, inert under
-`--select F,B` and written for a rule nothing has ever selected.
+`# shellcheck disable=`, so nothing is suppressed in what those two read: what
+the gates let through, they let through because of the threshold and the
+selection alone. The tree's one such suppression is a `# noqa: BLE001` in
+`tests/test_smtp.py`, inert under `--select F,B` and written for a rule nothing
+has ever selected. The workflow linters are the exception, with the three
+suppressions above.
 
 ## What blocks a pull request
 
-Five workflow files carry a `pull_request` trigger, but `dependabot-auto-merge.yml`
+Six workflow files carry a `pull_request` trigger, but `dependabot-auto-merge.yml`
 is a no-op for anything not opened by `dependabot[bot]` — its single job has no
 display `name:`, so on an ordinary pull request it appears as a skipped
 `auto-merge` check. The ones that can actually fail are:
@@ -332,6 +382,8 @@ display `name:`, so on an ordinary pull request it appears as a skipped
 | **Event File** | `test.yml` | Uploads the triggering event payload for the reporter. |
 | **ShellCheck** | `lint.yml` | Downloads shellcheck at the version and sha256 pinned in the job's `env:`, then `shellcheck -S error` over `run`, `healthcheck`, `.claude/hooks/session-start.sh` and `.github/check_sign_off.sh`. Seconds, no docker. See [Lint](#lint) for why that threshold and not a stricter one. |
 | **Ruff** | `lint.yml` | The same shape, one job over: downloads ruff at the version and sha256 pinned in the job's `env:`, then `ruff check --no-cache --select F,B tests`. Seconds, no docker. See [Lint](#lint) for why that selection and not a wider one, and why it is spelled out rather than inherited. |
+| **actionlint** | `lint-workflows.yml` | Installs actionlint at the pinned version with `go install` and runs `actionlint -shellcheck= -pyflakes=` over the workflows. Catches what makes a workflow wrong — a bad expression, an unknown input, a misspelt context. See [Lint](#lint). |
+| **zizmor** | `lint-workflows.yml` | Installs zizmor at the pinned version from the hash-checked wheel and runs `zizmor --offline --strict-collection --format github .` over the workflows and `dependabot.yml`. Catches what makes one unsafe: a token kept for later steps, an expression expanded into a script, a missing cooldown. Offline, so that the same tree always gets the same answer, which costs five audits: it is not a scan for vulnerable actions. See [Lint](#lint). |
 | **Sign-off** | `sign_off.yml` | Runs `.github/check_sign_off.sh` over the pull request's commits: each needs a `Signed-off-by`, and one authored by the agent needs it to name the maintainer. Seconds, no docker. See [Conventions](#conventions). |
 | **Test Results** | `test-results.yml` | Runs on `workflow_run` of `test`, downloads the junit artifacts and publishes them onto the PR. |
 
@@ -388,10 +440,14 @@ Notes a contributor will hit:
   check called "docker". Which checks are actually *required* is
   `.github/rulesets/master.json`, an export of the `master` ruleset in the form
   github's "Import a ruleset" takes and re-exports, so what gates a merge can be
-  diffed against the setting rather than taken on trust. Six are required:
-  **Build Image**, **Pytest**, **Pytest (arm64)**, **Sign-off**, **Ruff** and
-  **ShellCheck**; a workflow can report more than one of them, which is what
-  `lint.yml` does with the last two. Renaming a job means editing that file in
+  diffed against the setting rather than taken on trust. Eight are required:
+  **Build Image**, **Pytest**, **Pytest (arm64)**, **Sign-off**, **Ruff**,
+  **ShellCheck**, **actionlint** and **zizmor**; a workflow can report more
+  than one of them, which is what `lint.yml` does with **Ruff** and
+  **ShellCheck** and `lint-workflows.yml` with the last two. The ruleset file
+  is a record: the two linter checks gate a merge once the file is imported
+  under Settings > Rules, and until then they report without being required.
+  Renaming a job means editing that file in
   the same commit, which `tests/test_ruleset.py` is there to catch: a required
   context naming a job that no longer reports blocks every pull request until
   someone with admin rights notices, and that test fails on the rename instead.
@@ -478,7 +534,17 @@ Notes a contributor will hit:
   little as it needs, and `tests/test_scan.py` fails on one that does not:
   left out, the token gets the repository's default, which no diff shows. A
   job widens it only for itself, the way the two in `ci.yml` that push the
-  GHCR mirror add `packages: write`. (issue #18)
+  GHCR mirror add `packages: write`. (issue #18) Every `actions/checkout`
+  likewise sets `persist-credentials: false`. By default the action sets up a
+  credential for the steps after it, in a file in the runner's temp directory
+  that `.git/config` points at with `includeIf` entries; with `false` it removes
+  that credential right after its own fetch, so no later step inherits it (a
+  step that names `secrets.GITHUB_TOKEN`, a registry login for one, still has
+  the token). `tests/test_scan.py` fails on a checkout, in a workflow or a
+  composite action anywhere in the tree, that does not set it, unless that step
+  is on the short list there with the reason it needs the credential. The list is empty: no job with a checkout pushes or fetches
+  through git, and the one `git ls-remote`, in **Publish latest**, runs in a job
+  with no checkout. (issue #101)
 - **One action is pinned to a commit**, `EnricoMi/publish-unit-test-result-action`
   in `test-results.yml`; everything else is on a major tag, and Dependabot's
   weekly `github-actions` ecosystem bumps them. Do not "normalise" that
@@ -503,13 +569,18 @@ Notes a contributor will hit:
   The Python dependencies are pinned exactly (`tests/requirements.txt`); their
   transitive dependencies are not, and there is no lock file, so a run can
   still break without a change in this repo.
-- **Both linters are gates, but narrow ones.** **ShellCheck** fails only on
-  shellcheck errors in the four shell scripts; **Ruff** only on pyflakes
-  findings under `tests/`. Nothing about yaml, the `Dockerfile` or the README is
+- **ShellCheck and Ruff are gates, but narrow ones.** **ShellCheck** fails only
+  on shellcheck errors in the four shell scripts; **Ruff** only on pyflakes
+  findings under `tests/`. Nothing about the `Dockerfile` or the README is
   linted anywhere, and python outside `tests/` would not be either — the job
   names the directory. Do not widen either as a side effect of an unrelated
   change: `-S warning` fails on master today, and every ruff selection past `F`
-  costs edits to files that are not wrong.
+  costs edits to files that are not wrong. The yaml of the workflows and
+  `dependabot.yml` is **actionlint**'s and **zizmor**'s: zizmor at its default
+  persona and threshold bar the one `unpinned-uses` policy of
+  `.github/zizmor.yml`, actionlint with its shellcheck and pyflakes integrations
+  off and the two ignore lines of `.github/actionlint.yaml`. Both are clean on
+  the tree, so a finding on a pull request is that pull request's own.
 
 ## Conventions
 
@@ -552,7 +623,8 @@ Notes a contributor will hit:
 - **License headers.** Every source file carries the two-line SPDX header
   `CONTRIBUTING.md` spells out — `run`, `healthcheck`, the session-start
   hook and `.github/check_sign_off.sh` right after the shebang, every Python
-  module under `tests/`, every workflow, `.github/dependabot.yml` and the
+  module under `tests/`, every workflow, `.github/dependabot.yml`,
+  `.github/actionlint.yaml`, `.github/zizmor.yml` and the
   `Dockerfile` at the top, and `CONTRIBUTING.md` and `LICENSE-COMMERCIAL.md`
   in an HTML comment. Add it to any new source file. Nothing else carries
   one: `tests/__init__.py` stays empty, and neither the two unbuilt anchors

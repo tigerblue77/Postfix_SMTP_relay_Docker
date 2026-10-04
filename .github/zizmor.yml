@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# The configuration of zizmor, the workflow linter that
+# .github/workflows/lint-workflows.yml runs on every pull request. zizmor reads
+# this path by itself, from the directory it is pointed at; nothing passes it
+# on a command line.
+#
+# One audit is configured, and nothing is turned off.
+
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # Actions are pinned to a version tag rather than to a commit hash, and
+        # that is the maintainer's decision: the tag is what Dependabot's weekly
+        # github-actions updates move, and a hash would have it moving
+        # something nobody can read. The one exception is
+        # EnricoMi/publish-unit-test-result-action, which is pinned to a commit
+        # and stays so; this accepts that as well as a tag. What it still
+        # refuses is an action named with no ref at all; it accepts any ref, a
+        # branch such as @main included, so it enforces that an action has a
+        # ref and not that the ref is a version tag.
+        "*": ref-pin

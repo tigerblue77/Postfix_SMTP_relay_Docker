@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# The configuration of actionlint, which .github/workflows/lint-workflows.yml
+# runs on every pull request. actionlint reads this path by itself, so the
+# command line there is the one to type locally as well.
+#
+# It holds one suppression, which is two messages about one step, and every
+# line of it is a decision to argue rather than a line to append:
+# tests/test_lint_workflows.py fails when this list changes without being edited
+# there.
+
+paths:
+  .github/workflows/auto_update_pull_request_branches.yml:
+    ignore:
+      # actionlint 1.7.12 carries a copy of the inputs of the popular actions,
+      # and its copy of actions/create-github-app-token@v3 is older than the
+      # action. It lists app-id as required and has never heard of client-id,
+      # while the action's own action.yml at v3 takes client-id and marks
+      # app-id as deprecated and not required. The step is right and the table
+      # is stale: switching it to app-id would pass the wrong identifier, since
+      # the variable it reads holds the App's client ID. Drop both lines when
+      # the pinned actionlint knows the v3 inputs.
+      - 'missing input "app-id" which is required by action "actions/create-github-app-token@v3"'
+      - 'input "client-id" is not defined in action "actions/create-github-app-token@v3"'

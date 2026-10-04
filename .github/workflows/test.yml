@@ -54,6 +54,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the checkout does not keep the job token for them.
+          persist-credentials: false
       
       - name: Setup python
         uses: actions/setup-python@v7
@@ -92,6 +95,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the checkout does not keep the job token for them.
+          persist-credentials: false
 
       - name: Setup python
         uses: actions/setup-python@v7
@@ -147,6 +153,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the checkout does not keep the job token for them.
+          persist-credentials: false
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -183,7 +192,11 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-          cache: 'pip'
+          # No pip cache here, unlike the two jobs above. This one builds an
+          # image with docker/build-push-action, which zizmor's cache-poisoning
+          # audit takes for publishing whatever "load" says, and a job that
+          # publishes should not restore a cache. Nothing is pushed from here;
+          # the cost is one pip download of seven pinned packages.
 
       - name: Install Python dependencies
         run: pip install -r tests/requirements.txt
