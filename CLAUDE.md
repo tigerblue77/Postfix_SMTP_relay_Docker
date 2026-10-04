@@ -189,8 +189,7 @@ Six modules run without a docker daemon: `test_ruleset.py`, which reads
 `.github/rulesets/master.json` and the workflows, `test_ci.py`, which reads
 `.github/workflows/ci.yml` and the `Dockerfile` and runs two of its steps
 against a stubbed `docker`, `test_scan.py`, which reads
-`.github/workflows/scan.yml` and, for the rules every workflow keeps, all of
-them, `test_lint.py`, which compares the scripts
+`.github/workflows/scan.yml`, `test_lint.py`, which compares the scripts
 `.github/workflows/lint.yml` names with the ones git tracks,
 `test_claude_code_settings.py`, which reads `.claude/settings.json`, and
 `test_sign_off.py`, which builds throwaway git repositories and runs
