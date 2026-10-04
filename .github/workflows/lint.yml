@@ -53,6 +53,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the token is not left in .git/config.
+          persist-credentials: false
 
       - name: Install shellcheck
         # Into RUNNER_TEMP rather than the checkout, so the tree the next step
@@ -128,6 +131,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the token is not left in .git/config.
+          persist-credentials: false
 
       - name: Install ruff
         run: |

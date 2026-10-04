@@ -79,6 +79,9 @@ jobs:
       -
         name: Checkout
         uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the token is not left in .git/config.
+          persist-credentials: false
       -
         name: Helper for custom repo name
         id: reponame
@@ -317,6 +320,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the token is not left in .git/config.
+          persist-credentials: false
 
       - name: Helper for custom repo name
         id: reponame
@@ -440,6 +446,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the token is not left in .git/config.
+          persist-credentials: false
 
       - name: Helper for custom repo name
         id: reponame

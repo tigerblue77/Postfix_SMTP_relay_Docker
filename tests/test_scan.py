@@ -297,3 +297,60 @@ def test_every_workflow_states_what_its_token_may_do():
 
     assert workflows
     assert not silent, f"workflows leaving their token to the repository default: {silent}"
+
+
+# Checkouts that keep the job token in `.git/config`, as {(file, job): why}.
+# Empty, and meant to stay so: a checkout belongs here only when a later step
+# of the same job runs `git push`, or a `git fetch` through the remote, and has
+# nothing else to authenticate with. Say which step, so that the next person to
+# touch that job knows what removing it would break.
+PERSISTED_CHECKOUTS = {}
+
+
+def checkout_steps():
+    """Every `actions/checkout` step, as ((file, job), step).
+
+    Workflows and composite actions both, so a checkout hidden in one of the
+    latter -- there are none today -- is held to the same rule. A composite
+    action has no job; its file name stands in for both halves of the key.
+    """
+    github = SCAN.parent.parent
+    found = []
+    for path in sorted(SCAN.parent.glob("*.yml")):
+        for job, body in yaml.safe_load(path.read_text())["jobs"].items():
+            found += [((path.name, job), step) for step in body.get("steps", [])]
+    for path in sorted(github.glob("actions/**/action.yml")):
+        steps = yaml.safe_load(path.read_text()).get("runs", {}).get("steps", [])
+        found += [((str(path.relative_to(github)),) * 2, step) for step in steps]
+    return [(where, step) for where, step in found
+            if str(step.get("uses", "")).startswith("actions/checkout@")]
+
+
+def test_every_checkout_drops_the_job_token_or_says_why_it_keeps_it():
+    """`actions/checkout` writes the job's token into `.git/config` unless told
+    not to, where every later step of the job can read it -- and so can an
+    artifact upload of the workspace, a known way for such a token to leak
+    (zizmor calls it `artipacked`). Nothing here needs it after the checkout:
+    no job with one pushes or fetches through git, the registry logins are the
+    actions' own, the `gh` steps carry their own `GH_TOKEN`, and the one
+    `git ls-remote`, in `ci.yml`'s promote job, runs in a job with no checkout
+    at all. So each checkout sets `persist-credentials: false`, and the
+    exceptions are a short list above with the step that needs the token
+    written next to each. A string `"false"` is accepted because that is what
+    github sees; an expression is not, since it can turn into anything.
+    """
+    checkouts = checkout_steps()
+    assert checkouts, "no actions/checkout step found at all; the walk above is broken"
+
+    kept = {where for where, step in checkouts
+            if (step.get("with") or {}).get("persist-credentials") not in (False, "false")}
+    unlisted = sorted(kept - set(PERSISTED_CHECKOUTS))
+    assert not unlisted, (
+        f"checkouts that leave the job token in .git/config: {unlisted}. "
+        f"Set `persist-credentials: false` on them, or, if a later step of the "
+        f"job needs the token, list the job in PERSISTED_CHECKOUTS with that step"
+    )
+    stale = sorted(set(PERSISTED_CHECKOUTS) - kept)
+    assert not stale, (
+        f"PERSISTED_CHECKOUTS names checkouts that no longer keep the token: {stale}"
+    )
