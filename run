@@ -593,8 +593,12 @@ EOF
   if [ -z ${RSYSLOG_REMOTE_TEMPLATE} ] ; then
     RSYSLOG_REMOTE_TEMPLATE=RSYSLOG_ForwardFormat
   fi
+  # The same two facilities are held back from the remote server as from
+  # stdout, for the same reason: a password can end up in an auth line, and
+  # this goes out over plain UDP to a collector nobody here controls. Each
+  # selector governs its own action only, so the filter has to be repeated.
   if [ ! -z ${RSYSLOG_REMOTE_HOST} ] ; then
-    echo "*.* action(type=\"omfwd\" target=\"${RSYSLOG_REMOTE_HOST}\" port=\"${RSYSLOG_REMOTE_PORT}\" template=\"${RSYSLOG_REMOTE_TEMPLATE}\")" >> /etc/rsyslog.conf
+    echo "*.*;auth,authpriv.none action(type=\"omfwd\" target=\"${RSYSLOG_REMOTE_HOST}\" port=\"${RSYSLOG_REMOTE_PORT}\" template=\"${RSYSLOG_REMOTE_TEMPLATE}\")" >> /etc/rsyslog.conf
   fi
 fi
 
