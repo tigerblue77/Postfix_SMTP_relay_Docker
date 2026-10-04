@@ -210,6 +210,23 @@ def test_milter_settings_are_left_alone_when_set_explicitly(postfix_factory):
     assert postconf(relay, 'smtpd_milters') == 'inet:localhost:12301, inet:localhost:12302'
 
 
+def test_an_empty_milter_setting_is_kept_empty(postfix_factory):
+    """An empty POSTFIX_ value clears the parameter, the README says, and for
+    these two DKIM used to write its default straight back over it. A relay
+    signing only what reaches pickup is set up exactly that way.
+    """
+    relay = postfix_factory(env={
+        'OPENDKIM_DOMAINS': 'example.com',
+        'POSTFIX_smtpd_milters': '',
+        'POSTFIX_non_smtpd_milters': 'inet:localhost:12301',
+    })
+
+    assert postconf(relay, 'smtpd_milters') == ''
+    assert postconf(relay, 'non_smtpd_milters') == 'inet:localhost:12301'
+    # The one left out still gets its default.
+    assert postconf(relay, 'milter_default_action') == 'accept'
+
+
 def test_the_relay_signs_and_does_not_verify(postfix_factory, mailpit):
     """Every host is internal (OPENDKIM_InternalHosts), and opendkim verifies
     only mail from hosts that are not, so this relay never verifies anything.

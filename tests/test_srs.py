@@ -141,6 +141,20 @@ def test_user_supplied_canonical_maps_are_kept(postfix_factory):
     assert postconf(relay, 'recipient_canonical_maps') == 'tcp:127.0.0.1:10002'
 
 
+def test_an_empty_canonical_setting_is_kept_empty(postfix_factory):
+    """"Your value is used instead", and an empty one is a value: a relay that
+    rewrites outbound senders but leaves inbound recipients alone clears the
+    reverse map, which SRS used to point back at postsrsd regardless.
+    """
+    relay = postfix_factory(env={
+        'POSTSRSD_SRS_DOMAIN': SRS_DOMAIN,
+        'POSTFIX_recipient_canonical_maps': '',
+    })
+
+    assert postconf(relay, 'recipient_canonical_maps') == ''
+    assert postconf(relay, 'sender_canonical_maps') == 'tcp:127.0.0.1:10001'
+
+
 def test_every_canonical_setting_the_readme_names_can_be_overridden(postfix_factory):
     """Four settings are promised, and each has its own guard in srsConfig.
 
