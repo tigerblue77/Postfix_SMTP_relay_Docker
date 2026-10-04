@@ -52,8 +52,11 @@ updates:
   # tests/test_image.py::test_the_image_is_a_single_debian_release, which
   # fails until it is moved in the same edit as the FROM line.
   #
-  # A date is not a semver minor or patch, so these never match the
-  # auto-merge rule below and always wait for review, like bump's PRs did.
+  # A date is not a semver minor or patch, so the semver rule of the
+  # auto-merge workflow never matches these; it picks this one out by name
+  # instead -- the dependency debian, in the docker ecosystem, in this
+  # directory -- and merges it once the required checks pass, which run the
+  # whole suite against the image the pull request builds.
   - package-ecosystem: docker
     directory: /
     schedule:
@@ -80,11 +83,11 @@ updates:
   # entry on "/" neither sees these files nor is disturbed by them.
   #
   # Unlike the base image above, a bump here is an ordinary semver minor or
-  # patch, so the auto-merge rule applies to it. That is the right way round:
-  # these are test peers rather than the shipped image, every one of these
-  # pull requests runs the whole suite against the new one, and the suite is
-  # the only thing that can say whether it still behaves as the tests expect.
-  # One that does not stays red and waits for a person.
+  # patch, so the semver rule of the auto-merge workflow applies to it as it
+  # stands. Every one of these pull requests runs the whole suite against the
+  # new peer, and the suite is the only thing that can say whether it still
+  # behaves as the tests expect. One that does not stays red and waits for a
+  # person.
   - package-ecosystem: docker
     directory: /tests
     schedule:

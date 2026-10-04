@@ -1,8 +1,19 @@
 # SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
 # SPDX-License-Identifier: AGPL-3.0-only
 
-# Auto-merge Dependabot pull requests for minor and patch updates once
-# required checks pass. Major updates are left for human review.
+# Auto-merge Dependabot pull requests for minor and patch updates, and for the
+# Debian base image of the Dockerfile, once required checks pass. Major updates
+# are left for human review.
+#
+# The base image is the one update that is not semver: its tag is
+# trixie-<date>-slim, which fetch-metadata reports with an update-type of
+# null, so it is picked out by what it is -- the docker ecosystem, the
+# dependency named debian, the Dockerfile in the root directory -- rather
+# than by how far the version moved. Dependabot only offers a tag of the same
+# shape, so this can never move the image to another suite. What stands
+# between such a pull request and master is what stands between any other
+# change and it: the six required checks below, which run the whole suite on
+# both architectures against the image the pull request builds.
 #
 # Requirements:
 # - "Allow auto-merge" enabled in the repository settings
@@ -69,14 +80,21 @@ jobs:
       # exactly what that rule refuses, so "--merge" asked for the one kind of
       # merge master cannot take. tests/test_ruleset.py holds this flag to the
       # methods the ruleset allows.
-      - name: Enable auto-merge for minor and patch updates
-        if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
+      - name: Enable auto-merge for minor and patch updates and the Debian base image
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+          || steps.metadata.outputs.update-type == 'version-update:semver-patch'
+          || (steps.metadata.outputs.dependency-names == 'debian'
+          && steps.metadata.outputs.package-ecosystem == 'docker'
+          && steps.metadata.outputs.directory == '/')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           # GITHUB_TOKEN works out of the box, but a merge performed with it
           # does not trigger the on:push ci workflow on master, so :latest is
-          # not rebuilt until the next push. To get that rebuild, store a PAT
-          # as a *Dependabot* secret (Settings > Secrets > Dependabot) and use
-          # it here instead.
+          # not rebuilt until the next push. For a test dependency that costs
+          # nothing; for the base image it is the whole point of the bump, which
+          # then reaches master and waits there for the next push to be built
+          # and published. To get that rebuild, store a PAT as a *Dependabot*
+          # secret (Settings > Secrets > Dependabot) and use it here instead.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

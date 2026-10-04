@@ -56,7 +56,7 @@ which is where contributor branches lived then.
 | `.github/workflows/test-results.yml` | On `workflow_run` of `test`, downloads the junit artifacts and publishes them as the **Test Results** check. |
 | `.github/workflows/lint.yml` | `name: lint`. Two jobs, each pinned and checksummed: `shellcheck`, displayed as **ShellCheck**, runs `shellcheck -S error` over `run`, `healthcheck`, the session-start hook and the sign-off check — the only threshold the image scripts pass; `ruff`, displayed as **Ruff**, runs `ruff check --no-cache --select F,B tests` — pyflakes and bugbear over all the python in the tree. The only two linters there are, and neither reads a config file. |
 | `.github/workflows/scan.yml` | `name: scan`. One job, `trivy`, displayed as **Image Scan**: on a daily `schedule:` and on `workflow_dispatch`, downloads a pinned, checksummed trivy and scans the *published* image at `--ignore-unfixed --severity HIGH,CRITICAL`. The only workflow with a `schedule:`, and the only one that reports nothing on a pull request at all — `test-results.yml` has no `pull_request` trigger either, but its `workflow_run` on `test` puts a check there anyway. Files one issue when it finds something and closes it when it stops, which is the only thing in the tree that writes to the tracker; each of the first `MAX_REBUILD_ATTEMPTS` runs that finds the issue still open also dispatches **ci.yml** on `master` with `no-cache` set, *waits for that run* and re-scans what it published, so the run that applied the remedy is the one that closes the issue rather than the next morning's — see invariant 36. The waiting is why its `timeout-minutes` is the longest of any job that waits on another workflow — the branch updater's is longer, but it sleeps on a clock and waits on no workflow — and why the wait has a bound of its own well inside it: a job killed by `timeout-minutes` is *cancelled* rather than failed, and github's notification for a scheduled run fires on failure. |
-| `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates, by squash because `master` refuses a merge commit. Its header comment records the check names that *exist* and what it needs from the repository settings and the ruleset; which of them are *required* is the ruleset below. |
+| `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates and for the Debian base image of the `Dockerfile` (picked out by name, since a date tag is not semver — invariant 31), by squash because `master` refuses a merge commit. Its header comment records the check names that *exist* and what it needs from the repository settings and the ruleset; which of them are *required* is the ruleset below. |
 | `.github/workflows/auto_update_pull_request_branches.yml` | On every push to `master`, and on `workflow_dispatch`; no `schedule:`. A push starts a run whose first step sleeps `QUIET_PERIOD_MINUTES` (an hour), and the next push cancels it, so only the run that follows the last push of a series wakes up and rebases every open, conflict-free, non-draft pull request that `master` left behind, so that the checks a reviewer reads describe the `master` it would land on. A pull request that conflicts gets one comment, found again by a marker so that it is written once and deleted when the conflict is gone. A run started by hand does not wait. Best effort, and not required: "Require branches to be up to date" is off, and Dependabot's pull requests are left to Dependabot, since a rebase pushed by anyone else strips the signature the auto-merge checks. Its header says why it needs a GitHub App or a personal access token rather than the `GITHUB_TOKEN`, why the conflict comment has to come from the App, and what the sleep costs. |
 | `.github/workflows/sign_off.yml` | `name: sign-off`. One job, displayed as **Sign-off**, on `pull_request` only: checks out with `fetch-depth: 0` and runs `.github/check_sign_off.sh` over the pull request's base and head. Not on `master`, whose squashes no longer carry the branch's trailers and whose older history is unsigned, and not on `workflow_dispatch`, which has no range. |
 | `.github/check_sign_off.sh` | The decision the **Sign-off** check reports: every non-merge commit in `base..head` carries a well-formed `Signed-off-by` read through git's own trailer parser, every commit the agent authored carries the maintainer's sign-off, so the tool never certifies its own work, and no commit names the agent as a co-author of somebody else's work. Fails closed — an empty or unreadable range is a refusal, not a pass — and is the one script in the tree under `set -e`, for that reason. |
@@ -1111,9 +1111,21 @@ changing any of them.
     properties bump had are preserved by construction in
     `.github/dependabot.yml`: Dependabot only offers tags matching the shape of
     the current one, so `trixie-<date>-slim` stays on trixie and stays slim,
-    and a date is not a semver minor or patch, so base-image PRs never match
-    the auto-merge rule and always wait for review. A suite change
-    (trixie → forky) is a deliberate edit, as it was before. (commit `5de83d0`)
+    and a date is not a semver minor or patch, so the semver rule of
+    `dependabot-auto-merge.yml` never matches a base-image PR. It used to wait
+    for review for that reason; since issue #97 the workflow picks it out by
+    name instead — `fetch-metadata` reports `dependency-names: debian`,
+    `package-ecosystem: docker`, `directory: /` and an `update-type` of null
+    for it, read off the run of the first such PR — and enables auto-merge
+    like any other, so what stands between the bump and `master` is the six
+    required checks, which run the whole suite against the image the PR
+    builds. That merge is made with the `GITHUB_TOKEN`, whose push starts no
+    `ci.yml` run on `master` (the mailpit bump merged on 2026-10-03 left none),
+    so the new base is in the tree and not in `:latest` until the next push to
+    `master` publishes it; a Dependabot secret holding a token that does start
+    it is what would close that, and the workflow's comment says where it goes.
+    A suite change (trixie → forky) is a deliberate edit, as it was before.
+    (commit `5de83d0`)
 
 32. **`tests/mailpit.Dockerfile` is never built, and both halves of it are
     load-bearing.** It exists because Dependabot cannot read a version out of a
@@ -1164,9 +1176,10 @@ changing any of them.
     a red would never be attributable to the diff: `ci.yml` builds only what
     the tree contains, so a pull request touching `run`, a fixture or the
     README cannot introduce a Debian CVE, and its author holds no lever, the
-    remedy being a base bump `dependabot.yml` deliberately keeps out of
-    auto-merge. `lint.yml`'s header already states the rule this follows — an
-    unpinnable input must not fail somebody's unrelated pull request — and a
+    remedy being a base bump, which Dependabot opens and no contributor's
+    pull request can bring about. `lint.yml`'s header already states the rule
+    this follows — an unpinnable input must not fail somebody's unrelated pull
+    request — and a
     vulnerability database is that input by construction, since pinning it is
     the same as not running the scan. Promoting this to a required check means
     answering that, not assuming it. Trivy is a checksummed release download
