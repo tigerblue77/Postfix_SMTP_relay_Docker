@@ -147,7 +147,8 @@ postfix would otherwise derive from `gethostname()`. Set it to the FQDN clients
 and remote servers should see: it is used for the 220 greeting and HELO, and
 [myorigin](http://www.postfix.org/postconf.5.html#myorigin) derives from it, so
 it also affects `Received` headers and the envelope sender of mail postfix
-generates itself.
+generates itself. Until it is a qualified name, the container says so on stderr
+at every start.
 
 The image ships `POSTFIX_inet_protocols=ipv4`, so it neither accepts
 connections nor delivers mail over IPv6. Set `POSTFIX_inet_protocols=all` if
@@ -396,7 +397,8 @@ The default configuration is an open relay that relies on docker networking for
 protection: anything that can reach port 25 can send mail through it, to
 anyone. That is fine while the port is only reachable from other containers on
 the same docker network, and it is why the port should not be published unless
-something outside docker really has to reach it.
+something outside docker really has to reach it. The container says so on
+stderr at every start, until relaying is closed down one of the two ways below.
 
 If it does, stop relaying for the whole world first, either by restricting who
 may relay by address:

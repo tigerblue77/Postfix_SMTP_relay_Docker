@@ -14,7 +14,8 @@ import pytest
 
 from tests.helpers import (container_exec, container_log, container_stderr,
                            esmtp_features, exit_code_within, listening_ports,
-                           postconf, send, send_raw, smtp_connect, wait_for_log)
+                           postconf, send, send_raw, smtp_connect,
+                           stderr_once_started, wait_for_log)
 
 
 def test_postfix_variables_configure_main_cf(postfix_factory, mailpit):
@@ -159,6 +160,24 @@ def test_mynetworks_restricts_who_may_relay(postfix_factory, mailpit):
     assert b'Relay access denied' in message
 
     mailpit.assert_nothing_delivered()
+
+
+@pytest.mark.parametrize('closed', [
+    {'POSTFIX_mynetworks': '127.0.0.0/8'},
+    {'POSTFIX_smtpd_relay_restrictions': 'permit_sasl_authenticated,reject'},
+], ids=['by address', 'by authentication'])
+def test_a_relay_set_up_as_the_readme_says_is_not_warned_about(postfix_factory, closed):
+    """The two start-up warnings are about the shipped defaults, not about a
+    relay whose operator already did what "Securing the relay" and the
+    myhostname note ask: closing relaying down either way the README shows,
+    and naming the relay (issue #13).
+    """
+    relay = postfix_factory(env={'POSTFIX_myhostname': 'smtp.example.test', **closed})
+
+    stderr = stderr_once_started(relay)
+
+    assert 'mynetworks covers every address' not in stderr
+    assert 'not a fully qualified name' not in stderr
 
 
 # Two tables and the settings that use them, in one relay: writing the file,

@@ -716,6 +716,34 @@ else
   rm -f "$greeted"
 fi
 
+# Two settings the image ships on purpose, and which are wrong as soon as the
+# relay can be reached from further than its docker network or talks to a
+# receiver that checks HELO. Each one is said on every start and nothing is
+# refused: both work as documented. The effective values are read back rather
+# than the environment, because a _FILE secret, a mounted main.cf or a compose
+# fragment all reach the same setting by other roads. "Open" means mynetworks
+# covers every address and the relay restrictions still let mynetworks relay;
+# a relay that narrowed either one is not warned (issue #13).
+networks=" $(postconf -hx mynetworks | tr ',\t' '  ') "
+restrictions=" $(postconf -hx smtpd_relay_restrictions | tr ',\t' '  ') "
+case "$networks" in
+  *" 0.0.0.0/0 "*|*" ::/0 "*|*" [::]/0 "*)
+    if [[ "$restrictions" == *" permit_mynetworks "* ]] ; then
+      echo "Warning: mynetworks covers every address, so this relay passes on" \
+           "mail from anything that can reach its port. That is the image's" \
+           "default and is safe only while the port is not published beyond" \
+           "its docker network: set POSTFIX_mynetworks, or see \"Securing the" \
+           "relay\" in the README." >&2
+    fi
+    ;;
+esac
+myhostname=$(postconf -hx myhostname)
+if [[ "$myhostname" != *.* ]] ; then
+  echo "Warning: myhostname is '$myhostname', not a fully qualified name, and" \
+       "many receivers refuse a HELO that is not one: set POSTFIX_myhostname to" \
+       "the name this relay's address resolves back to." >&2
+fi
+
 # rsyslogd is the only one of them that is a job of this script -- the other
 # four daemonise, so their starter exits and they reparent to pid 1, which is
 # this script, and bash has no job to wait on. The bare "wait" this replaces

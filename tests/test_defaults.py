@@ -20,7 +20,7 @@ from testcontainers.core.waiting_utils import wait_for_logs
 
 from tests.helpers import (container_exec, esmtp_features, image_run, listening_ports,
                            postconf,
-                           process_running, send, wait_for_log)
+                           process_running, send, stderr_once_started, wait_for_log)
 
 # A next hop whose certificate is signed by a CA of our own, so that trusting
 # it is a question about the trust store rather than about the certificate.
@@ -125,6 +125,17 @@ def test_the_relay_is_open(postfix):
     """Documented, and the reason the README says not to expose the container."""
     assert postconf(postfix, 'mynetworks') == '0.0.0.0/0'
     assert postconf(postfix, 'mydestination') == 'localhost'
+
+
+def test_start_up_says_the_relay_is_open_and_its_name_unqualified(postfix):
+    """Both defaults are deliberate, and both go wrong without a line of new
+    output: publishing the port makes the open relay reachable from anywhere,
+    and receivers that check HELO refuse a single-label name. So every start
+    says so on stderr, and carries on (issue #13)."""
+    stderr = stderr_once_started(postfix)
+
+    assert 'mynetworks covers every address' in stderr
+    assert "myhostname is 'hostname', not a fully qualified name" in stderr
 
 
 def test_which_postfix_daemons_master_keeps_privileged(postfix):
