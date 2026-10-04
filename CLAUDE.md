@@ -1484,4 +1484,11 @@ changing any of them.
     after postfix: the comment on it that says it follows rsyslogd is still
     true, and is now true of everything else too. The `Skipping
     /etc/rsyslog.conf generating` line therefore comes first in the log of a
-    restarted container, which `tests/test_logging.py` splits on. (issue #11)
+    restarted container, which `tests/test_logging.py` splits on. The init
+    scripts go through `runService` for the same reason: they write
+    `Starting ...: name` without ending the line and finish it with a `.`, so
+    with rsyslogd already running what a daemon logs while starting landed in
+    the middle of that line, and the first line of the log began with the
+    script's text. `runService` collects what the script says and prints it
+    once it is done, to files and not pipes because a daemon that keeps its
+    descriptors open would hold a pipe, and so this script, up. (issue #11)
