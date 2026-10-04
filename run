@@ -716,9 +716,13 @@ while [ -z "$stopping" ] ; do
   # by a trapped signal, while a foreground "sleep" would postpone the stop by
   # a whole interval. "-n" returns on whichever finishes first, so rsyslogd --
   # the one daemon that is still a job of this shell -- is noticed the moment
-  # it dies rather than at the end of the interval.
+  # it dies rather than at the end of the interval. The two are named rather
+  # than left to "any job": saslauthd's starter is a job too, one that exits
+  # during start-up, and a bare "wait -n" returned on it at once and left this
+  # loop one sleep ahead of itself for the life of the container, polling
+  # twice per interval (issue #15).
   sleep 2 &
-  wait -n
+  wait -n "$!" "$rsyslogPid"
   [ -n "$stopping" ] && break
 
   for daemon in $supervised ; do
