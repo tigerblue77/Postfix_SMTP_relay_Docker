@@ -370,14 +370,17 @@ def checkout_problems(root, allowed):
 
 
 def test_every_checkout_drops_the_job_token_or_says_which_step_needs_it():
-    """`actions/checkout` keeps the job's token for the steps after it unless
-    told not to: it writes it to a credentials file in the runner's temp
-    directory, outside the workspace, points `.git/config` at that file with
-    `includeIf` entries, and removes both when the job ends. Until then any later
-    step of the job can read it, through git or through the file. With
-    `persist-credentials: false` the action removes it right after its own fetch
-    (the "Removing auth" group of its log). zizmor's `artipacked` audit flags the
-    default however the action stores the token. Nothing here needs the token after the checkout: no
+    """`actions/checkout` sets up a credential for the steps after it unless
+    told not to: it writes the job's token to a credentials file in the
+    runner's temp directory, outside the workspace, points `.git/config` at that
+    file with `includeIf` entries, and removes both when the job ends. Until
+    then any later step of the job inherits it, through git or through the
+    file. With `persist-credentials: false` the action removes that credential
+    right after its own fetch (the "Removing auth" group of its log), so no later
+    step inherits it. That is all it does: a step that names
+    `secrets.GITHUB_TOKEN`, a registry login for one, still has the token.
+    zizmor's `artipacked` audit flags the default however the action stores it.
+    Nothing here needs the credential the checkout sets up: no
     job with one pushes or fetches through git, the registry logins are the
     actions' own, the `gh` steps carry their own `GH_TOKEN`, and the one
     `git ls-remote`, in `ci.yml`'s promote job, runs in a job with no checkout at
