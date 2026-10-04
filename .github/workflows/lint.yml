@@ -54,7 +54,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # No later step uses git against the remote, so the token is not left in .git/config.
+          # No later step uses git against the remote, so the checkout does not keep the job token for them.
           persist-credentials: false
 
       - name: Install shellcheck
@@ -132,7 +132,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # No later step uses git against the remote, so the token is not left in .git/config.
+          # No later step uses git against the remote, so the checkout does not keep the job token for them.
           persist-credentials: false
 
       - name: Install ruff
