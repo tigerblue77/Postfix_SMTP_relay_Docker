@@ -775,11 +775,17 @@ while [ -z "$stopping" ] ; do
     pgrep -x "$daemon" > /dev/null && continue
 
     # A daemon takes a moment to actually go away, and a relay that is fine is
-    # not worth stopping over a single missed reading.
+    # not worth stopping over a single missed reading. The miss is said all
+    # the same: a near miss is worth seeing in the log, and without the line
+    # this second reading could be deleted with nothing noticing (issue #23).
     sleep 1 &
     wait $!
     [ -n "$stopping" ] && break 2
-    pgrep -x "$daemon" > /dev/null && continue
+    if pgrep -x "$daemon" > /dev/null ; then
+      echo "$daemon was missing from one reading of the supervision loop and" \
+           "back at the next, so the relay carries on." >&2
+      continue
+    fi
 
     # Exiting 0 would look like a clean stop and leave an on-failure restart
     # policy with nothing to act on.
