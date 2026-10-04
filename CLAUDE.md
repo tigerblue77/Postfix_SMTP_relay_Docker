@@ -558,10 +558,12 @@ Notes a contributor will hit:
   one: `tests/__init__.py` stays empty, and neither the two unbuilt anchors
   under `tests/`, the JSON files, `pytest.ini`, `tests/requirements.txt`,
   `.dockerignore`, `.gitignore`, `LICENSE`, `NOTICE`, `README.md`,
-  `SECURITY.md` nor this file has one.
-  `auto_update_pull_request_branches.yml` is the one header that differs: its
-  copyright line is the notice the file was first published under, and a
-  copyright notice is kept as written rather than normalised. The project is
+  `SECURITY.md` nor this file has one. The copyright line is the same on
+  every header, the project's own: `2015-2026 Mattias Wadman, Tigerblue77 and
+  the postfix-relay contributors`. A file written elsewhere and brought in
+  here takes it too, because a line naming another project's contributors
+  says that people who never touched the file hold it, and the commercial
+  licence covers only what this project holds. The project is
   `AGPL-3.0-only` with a commercial alternative ([LICENSE](LICENSE),
   [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md), [NOTICE](NOTICE)); it was
   MIT until the commit that added `NOTICE`.
