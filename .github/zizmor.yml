@@ -6,7 +6,7 @@
 # this path by itself, from the directory it is pointed at; nothing passes it
 # on a command line.
 #
-# Two audits are configured, and neither is turned off.
+# One audit is configured, and nothing is turned off.
 
 rules:
   unpinned-uses:
@@ -20,13 +20,3 @@ rules:
         # that as well as a tag. What it still refuses is an action named with
         # no ref at all.
         "*": ref-pin
-
-  dependabot-cooldown:
-    config:
-      # zizmor asks for a cooldown of at least seven days by default. This
-      # repository's is three for every ecosystem, and seven for a pip major
-      # release, which .github/dependabot.yml gives its reasons for and
-      # tests/test_ruleset.py holds in place. The number here is the one the
-      # file has, so that the audit checks what is configured rather than a
-      # figure picked elsewhere.
-      days: 3

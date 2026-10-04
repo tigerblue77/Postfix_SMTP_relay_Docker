@@ -38,7 +38,6 @@ LINT = GITHUB / "workflows" / "lint.yml"
 LINT_WORKFLOWS = GITHUB / "workflows" / "lint-workflows.yml"
 ACTIONLINT_CONFIG = GITHUB / "actionlint.yaml"
 ZIZMOR_CONFIG = GITHUB / "zizmor.yml"
-DEPENDABOT = GITHUB / "dependabot.yml"
 
 # Everything the two workflow linters are told to let through. Adding to either
 # list means editing it here, in the same change as the file it describes, with
@@ -191,11 +190,12 @@ def test_the_workflow_linters_let_through_only_what_is_argued_for():
     actionlint ones in `.github/actionlint.yaml`, the zizmor one in the header
     of the workflow it sits in.
 
-    zizmor's two configured audits are checked too, because they can be turned
-    into suppressions without anyone adding an `ignore`: a `*` policy of `any`
-    would stop `unpinned-uses` finding anything, and a cooldown threshold under
-    what `dependabot.yml` configures would stop `dependabot-cooldown` from
-    noticing that file go soft.
+    zizmor's one configured audit is checked too, because it can be turned
+    into a suppression without anyone adding an `ignore`: a `*` policy of `any`
+    would stop `unpinned-uses` finding anything. And nothing else may be
+    configured: in particular `dependabot-cooldown` keeps its default threshold
+    of seven days, which is what `dependabot.yml` sets, so that the audit goes
+    on checking that file against a number nobody here picked.
     """
     actionlint = yaml.safe_load(ACTIONLINT_CONFIG.read_text())
     assert set(actionlint) == {"paths"}, f"actionlint.yaml has more than paths: {sorted(actionlint)}"
@@ -212,18 +212,13 @@ def test_the_workflow_linters_let_through_only_what_is_argued_for():
     )
 
     rules = yaml.safe_load(ZIZMOR_CONFIG.read_text())["rules"]
-    assert set(rules) == {"unpinned-uses", "dependabot-cooldown"}, sorted(rules)
+    assert set(rules) == {"unpinned-uses"}, (
+        f"zizmor.yml configures {sorted(rules)}; only unpinned-uses is, and "
+        f"dependabot-cooldown keeps zizmor's default threshold"
+    )
     assert not [r for r, body in rules.items() if "ignore" in body], "zizmor.yml ignores something"
     assert rules["unpinned-uses"]["config"]["policies"] == {"*": "ref-pin"}, (
         "unpinned-uses is configured for something other than 'a ref is enough, "
         "for every action': a hash pin would fail the whole tree, and any would "
         "let an action with no ref through"
-    )
-    cooldowns = [
-        update["cooldown"]["default-days"]
-        for update in yaml.safe_load(DEPENDABOT.read_text())["updates"]
-        if "cooldown" in update
-    ]
-    assert rules["dependabot-cooldown"]["config"]["days"] == min(cooldowns), (
-        "zizmor's cooldown threshold is not the shortest default-days of dependabot.yml"
     )
