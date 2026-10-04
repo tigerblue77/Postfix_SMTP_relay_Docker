@@ -54,6 +54,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the checkout does not keep the job token for them.
+          persist-credentials: false
       
       - name: Setup python
         uses: actions/setup-python@v7
@@ -92,6 +95,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the checkout does not keep the job token for them.
+          persist-credentials: false
 
       - name: Setup python
         uses: actions/setup-python@v7
@@ -147,6 +153,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the checkout does not keep the job token for them.
+          persist-credentials: false
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
