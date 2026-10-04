@@ -1279,7 +1279,7 @@ which puts it in `$(go env GOPATH)/bin`, and that directory is not always on
 `PATH`. zizmor is installed with `pip install zizmor==1.30.1`, the versions CI pins.
 shellcheck and pyflakes are left off in actionlint on purpose, so that its
 verdict does not depend on what else happens to be installed. zizmor runs
-offline so that the same tree always gets the same answer, which costs it four
+offline so that the same tree always gets the same answer, which costs it five
 audits, the ones that look up the actions a workflow uses: it is not a scan for
 vulnerable actions. Their configuration is `.github/actionlint.yaml` and
 `.github/zizmor.yml`, which they read by themselves.

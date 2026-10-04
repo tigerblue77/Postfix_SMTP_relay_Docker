@@ -39,16 +39,17 @@ permissions:
 # there. A linter that moves would fail somebody's unrelated pull request on the
 # day it ships a new check, which is what lint.yml pins its own for.
 #
-# What a green zizmor does NOT mean. It runs --offline, and offline zizmor drops
-# four audits: impostor-commit, known-vulnerable-actions, ref-confusion and
-# stale-action-refs. Those are the ones that ask GitHub or an advisory database
-# about the actions a workflow uses, and their answers change daily, so a
-# required check that depended on them could go red for a reason that is in no
-# pull request. So this is not a scan for vulnerable or moved actions. Two more
-# limits: the unpinned-uses policy is ref-pin, which accepts any ref, a branch
-# such as @main included, so it enforces that an action has a ref and not that
-# the ref is a version tag; and the default persona leaves out the pedantic and
-# auditor findings, 29 on this tree, listed in CLAUDE.md.
+# What a green zizmor does NOT mean. It runs --offline, and offline zizmor skips
+# five audits (zizmor -vv lists them): impostor-commit, known-vulnerable-actions,
+# ref-confusion, stale-action-refs and ref-version-mismatch. Those are the ones
+# that ask GitHub or an advisory database about the actions a workflow uses, or
+# about the version comment beside a commit pin, and their answers change daily,
+# so a required check that depended on them could go red for a reason that is in
+# no pull request. So this is not a scan for vulnerable or moved actions.
+# Two more limits: the unpinned-uses policy is ref-pin, which accepts any ref, a
+# branch such as @main included, so it enforces that an action has a ref and not
+# that the ref is a version tag; and the default persona leaves out the pedantic
+# and auditor findings, 29 on this tree, listed in CLAUDE.md.
 
 jobs:
   actionlint:
@@ -124,7 +125,7 @@ jobs:
         # required check whose verdict moves overnight, for a reason that is in
         # no pull request, is the kind scan.yml's header says does not belong
         # on one. What is left reads the files alone, so the same tree always
-        # gets the same answer; the cost is the four audits the header lists.
+        # gets the same answer; the cost is the five audits the header lists.
         # --strict-collection because without it a file zizmor cannot parse is
         # skipped with a warning and the check stays green, and zizmor is the
         # only thing here that reads dependabot.yml. The annotations land on the
