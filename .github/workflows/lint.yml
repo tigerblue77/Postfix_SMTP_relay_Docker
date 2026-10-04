@@ -13,6 +13,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
+# Reading the tree is all either job does with its token. Written here rather
+# than left to the repository's default, which no diff shows and anyone with
+# admin rights can change.
+permissions:
+  contents: read
+
 # What the ShellCheck gate is, and what it deliberately is not.
 #
 # It runs shellcheck at "-S error", which is the threshold the image scripts
