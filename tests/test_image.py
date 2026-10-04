@@ -11,6 +11,9 @@ the cheapest place to notice that a base image update or an edit to the
 Dockerfile changed what every deployment gets.
 """
 
+import re
+from pathlib import Path
+
 import docker
 import pytest
 
@@ -235,6 +238,34 @@ def test_openssl_is_available(image_shell):
 
     assert exit_code == 0
     assert output.startswith('OpenSSL')
+
+
+def readme_certificate_command():
+    """The openssl command "Securing the relay" has an operator run, as it
+    stands in the README, without the `docker run` wrapped around it."""
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text()
+    section = readme.split("\n## Securing the relay\n", 1)[1].split("\n## ", 1)[0]
+    blocks = [b for b in re.findall(r"```\n(.*?)```", section, re.S) if "openssl req" in b]
+    assert len(blocks) == 1, "expected one openssl block under Securing the relay"
+    command = re.search(r"sh -c \\\n\s*'(.*?)'", blocks[0], re.S)
+    assert command, blocks[0]
+    return " ".join(command.group(1).replace("\\\n", " ").split())
+
+
+def test_the_readme_certificate_command_makes_a_usable_pair(image_shell):
+    """Run the way the README writes it, the command gives a certificate and a
+    key that belong together, the key readable by its owner alone. The README
+    had no such command while two docstrings here said it did."""
+    command = readme_certificate_command().replace("/out/", "/tmp/out/")
+    exit_code, output = image_shell(
+        f"mkdir -p /tmp/out && {command} 2> /dev/null && "
+        "stat -c '%a %n' /tmp/out/key.pem && "
+        "openssl x509 -in /tmp/out/cert.pem -noout -pubkey | sha256sum && "
+        "openssl pkey -in /tmp/out/key.pem -pubout | sha256sum")
+    assert exit_code == 0, output
+    mode, cert_key, key_key = output.splitlines()
+    assert mode == "600 /tmp/out/key.pem"
+    assert cert_key == key_key, "the certificate is not for that key"
 
 
 @pytest.mark.smoke

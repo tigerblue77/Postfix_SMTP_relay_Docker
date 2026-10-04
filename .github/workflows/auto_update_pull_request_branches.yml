@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2020-2026 Tigerblue77 and the Dell iDRAC fan controller Docker image contributors
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: Auto-update pull request branches

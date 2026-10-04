@@ -99,7 +99,7 @@ services:
     restart: always
     environment:
       - POSTFIX_myhostname=smtp.domain.tld
-      - OPENDKIM_DOMAINS=smtp.domain.tld
+      - OPENDKIM_DOMAINS=domain.tld  # the domain mail is sent from
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
@@ -128,6 +128,17 @@ container asks postfix for a greeting before handing over, so it stops with the
 postfix `fatal:` line naming the parameter instead of coming up unable to
 relay — but the value is still yours to get right.
 
+A misspelt name is kept and reported, not refused: `POSTFIX_mynetwork` for
+`mynetworks` writes a parameter postfix never reads, which leaves the setting
+you meant to change at its default. The container starts anyway, so the mail
+is not lost, and the log names it once at start-up:
+
+```
+postconf: warning: /etc/postfix/main.cf: unused parameter: mynetwork=10.0.0.0/8
+```
+
+The same goes for a misspelt `-o` option in a `POSTFIXMASTER_` variable.
+
 Note that `POSTFIX_myhostname` will change the postfix option
 [myhostname](http://www.postfix.org/postconf.5.html#myhostname). The image ships
 `POSTFIX_myhostname=hostname`, so unless you set it yourself a running container
@@ -136,7 +147,8 @@ postfix would otherwise derive from `gethostname()`. Set it to the FQDN clients
 and remote servers should see: it is used for the 220 greeting and HELO, and
 [myorigin](http://www.postfix.org/postconf.5.html#myorigin) derives from it, so
 it also affects `Received` headers and the envelope sender of mail postfix
-generates itself.
+generates itself. Until it is a qualified name, the container says so on stderr
+at every start.
 
 The image ships `POSTFIX_inet_protocols=ipv4`, so it neither accepts
 connections nor delivers mail over IPv6. Set `POSTFIX_inet_protocols=all` if
@@ -162,6 +174,13 @@ will produce
 ```
 postconf -Me submission/inet="submission inet n - y - - smtpd"
 ```
+
+The part after `POSTFIXMASTER_` has to be a valid variable name once `__`
+stands for `/`: letters, digits and `_` only. So a service named by an address,
+such as `127.0.0.1:10025/inet` — the usual shape for a content filter's
+reinjection port — cannot be set this way: `.` and `:` cannot appear in a
+variable name, the variable is never seen, and nothing reports it. Mount your
+own `/etc/postfix/master.cf` for such a service instead.
 
 ### Postfix lookup tables
 
@@ -289,6 +308,28 @@ so the visible `From:` header is left alone. If you set any of
 `POSTFIX_recipient_canonical_maps` or `POSTFIX_recipient_canonical_classes`
 yourself, your value is used instead.
 
+A rewritten sender is an address at the SRS domain, so a server that cannot
+deliver the message sends its bounce there rather than to the original sender.
+The bounce reaches the original sender only by coming back to this relay, which
+decodes the address and passes it on. That needs three things:
+
+- the SRS domain resolves to this relay, through its MX record or, when it has
+  none, its A record;
+- this relay's port 25 is reachable from the servers that send the bounces;
+- this relay accepts the bounce. One closed down either way
+  [Securing the relay](#securing-the-relay) shows does not: the bounce comes
+  from a server outside `mynetworks` that does not authenticate, and is refused
+  (`454 Relay access denied`, or `554 Access denied` with
+  `permit_sasl_authenticated,reject`). The original sender is then never told
+  that their message did not arrive.
+
+So a relay that uses SRS and is closed down has to accept mail for the SRS
+domain from anyone. The postfix documentation of
+[relay_domains](https://www.postfix.org/postconf.5.html#relay_domains) and
+[smtpd_recipient_restrictions](https://www.postfix.org/postconf.5.html#smtpd_recipient_restrictions)
+is where to start; whatever you choose, it is set with `POSTFIX_` variables like
+anything else.
+
 Rewritten addresses are signed with a secret in `/etc/postsrsd.secret`. The image
 ships without one, and a random secret is generated on first start, so no two
 deployments share a key. Return addresses stay valid for 21 days, so mount the
@@ -356,7 +397,8 @@ The default configuration is an open relay that relies on docker networking for
 protection: anything that can reach port 25 can send mail through it, to
 anyone. That is fine while the port is only reachable from other containers on
 the same docker network, and it is why the port should not be published unless
-something outside docker really has to reach it.
+something outside docker really has to reach it. The container says so on
+stderr at every start, until relaying is closed down one of the two ways below.
 
 If it does, stop relaying for the whole world first, either by restricting who
 may relay by address:
@@ -388,6 +430,10 @@ environment:
   - POSTFIX_smtpd_relay_restrictions=permit_sasl_authenticated,reject
 ```
 
+Either way, a relay that also rewrites senders with
+[SRS](#postsrsd-variables) then refuses the bounces for that mail; the SRS
+section says what that costs and what it takes to accept them.
+
 Clients that authenticate should also be able to do it over an encrypted
 connection, otherwise the password crosses the network in the clear. Mount a
 certificate and its key, and point postfix at them:
@@ -404,6 +450,21 @@ environment:
   # Never accept credentials over an unencrypted connection
   - POSTFIX_smtpd_tls_auth_only=yes
 ```
+
+A certificate from a real authority, such as one the host already renews over
+ACME, mounts the same way. On an internal network, where the point is that the
+password does not cross it in the clear rather than proving who the relay is, a
+self-signed pair made with the image's own `openssl` does:
+
+```
+docker run --rm -v "$PWD":/out tigerblue77/postfix_smtp_relay sh -c \
+  'openssl req -x509 -newkey rsa:2048 -noenc -days 3650 \
+     -subj /CN=smtp.domain.tld -keyout /out/key.pem -out /out/cert.pem'
+```
+
+That writes `cert.pem` and `key.pem` to the current directory, the key readable
+by its owner only. Nothing can verify a certificate no authority signed, so the
+clients have to be told to accept it.
 
 Mail leaving the relay is already sent over TLS whenever the receiving server
 offers it (`POSTFIX_smtp_tls_security_level=may`). Set it to `encrypt` when
@@ -586,11 +647,17 @@ their records are the provider's.
 To enable [DKIM](https://en.wikipedia.org/wiki/DomainKeys_Identified_Mail),
 specify a whitespace-separated list of domains in the environment variable
 `OPENDKIM_DOMAINS`. The default DKIM selector is "mail", but can be changed to
-"`<selector>`" using the syntax `OPENDKIM_DOMAINS=<domain>=<selector>`. Not
-comma-separated, unlike `POSTFIX_mynetworks` or
-`POSTSRSD_SRS_EXCLUDE_DOMAINS` above — a comma is an ordinary character in a
-domain name, and an entry containing one is refused rather than signed for
-under the wrong name.
+"`<selector>`" using the syntax `OPENDKIM_DOMAINS=<domain>=<selector>`. The
+domains are those of the addresses mail is sent *from* — the `From:` of the
+messages your applications hand the relay — and not the relay's own name: each
+entry signs `*@<domain>` and nothing else, so
+`OPENDKIM_DOMAINS=smtp.domain.tld` signs only mail from `…@smtp.domain.tld`. A
+subdomain is not covered by its parent either and needs its own entry, as in
+`OPENDKIM_DOMAINS="domain.tld notifications.domain.tld"`. A message that
+matches no entry goes out unsigned, and nothing is logged for it. Not
+comma-separated, unlike `POSTFIX_mynetworks` or `POSTSRSD_SRS_EXCLUDE_DOMAINS`
+above — a comma is an ordinary character in a domain name, and an entry
+containing one is refused rather than signed for under the wrong name.
 
 At container start, RSA key pairs will be generated for each domain unless the
 file `/etc/opendkim/keys/<domain>/<selector>.private` exists.
@@ -610,9 +677,9 @@ DNS records to configure can be found in the container log or by running `docker
 ```bash
 $ docker exec 7996454b5fca sh -c 'cat /etc/opendkim/keys/*/*.txt'
 
-mail._domainkey.smtp.domain.tld. IN	TXT	( "v=DKIM1; h=sha256; k=rsa; "
+mail._domainkey.domain.tld. IN	TXT	( "v=DKIM1; h=sha256; k=rsa; "
 	  "p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0Dx7wLGPFVaxVQ4TGym/eF89aQ8oMxS9v5BCc26Hij91t2Ci8Fl12DHNVqZoIPGm+9tTIoDVDFEFrlPhMOZl8i4jU9pcFjjaIISaV2+qTa8uV1j3MyByogG8pu4o5Ill7zaySYFsYB++cHJ9pjbFSC42dddCYMfuVgrBsLNrvEi3dLDMjJF5l92Uu8YeswFe26PuHX3Avr261n"
-	  "j5joTnYwat4387VEUyGUnZ0aZxCERi+ndXv2/wMJ0tizq+a9+EgqIb+7lkUc2XciQPNuTujM25GhrQBEKznvHyPA6fHsFheymOuB763QpkmnQQLCxyLygAY9mE/5RY+5Q6J9oDOQIDAQAB" )  ; ----- DKIM key mail for smtp.domain.tld
+	  "j5joTnYwat4387VEUyGUnZ0aZxCERi+ndXv2/wMJ0tizq+a9+EgqIb+7lkUc2XciQPNuTujM25GhrQBEKznvHyPA6fHsFheymOuB763QpkmnQQLCxyLygAY9mE/5RY+5Q6J9oDOQIDAQAB" )  ; ----- DKIM key mail for domain.tld
 ```
 
 A key restored on its own — a backup that kept the `.private` and not the
@@ -690,8 +757,12 @@ a relay is for.
 Note that declaring a volume is not by itself enough to preserve anything.
 Without an explicit mount docker creates an *anonymous* volume: `docker compose
 up` carries it over when it recreates a container, but a plain `docker rm` and
-`docker run` replaces it with an empty one. To keep the queue and the keys
-across container replacement, mount them yourself:
+`docker run` replaces it with an empty one, and so does `docker compose down`
+followed by `up`: `down` removes the container the volume was carried over
+from, so the next `up` creates a fresh, empty one, and the old volume — queued
+mail and DKIM keys included — is left on disk attached to nothing. (`docker
+compose down -v` deletes it instead.) To keep the queue and the keys across
+container replacement, mount them yourself:
 
 ```
 volumes:
@@ -866,6 +937,19 @@ environment:
   - RSYSLOG_REMOTE_PORT=514
   - RSYSLOG_REMOTE_TEMPLATE=RSYSLOG_ForwardFormat
 ```
+
+Messages from the `auth` and `authpriv` facilities, which is where saslauthd and
+PAM write and where a password can end up, are left out of both: they reach
+neither the container log nor the remote server. To see them while working out
+why a client's authentication fails, add them back with a file of your own (see
+below), for the container log only:
+
+```
+volumes:
+  - /your_local_path/50-auth.conf:/etc/rsyslog.d/50-auth.conf:ro
+```
+
+where `50-auth.conf` holds the single line `auth,authpriv.* /dev/stdout`.
 
 ### Advanced logging configuration
 
@@ -1089,7 +1173,7 @@ releasing something no check has seen.
 
 | File | What it covers |
 | --- | --- |
-| `test_image.py` | The published image before anything runs: the defaults from the Dockerfile, the declared volumes, the exposed port, the health check, the programs the README has users run out of it |
+| `test_image.py` | The published image before anything runs: the defaults from the Dockerfile, the declared volumes, the exposed port, the health check, the programs the README has users run out of it, the client certificate command run as the README writes it |
 | `test_defaults.py` | What a relay that is told nothing but where to send does, and the daemons it does not start |
 | `test_smtp.py` | The SMTP conversation itself, and that the message handed over is the message that was given |
 | `test_sendmail.py` | Whole messages, with their parts, their attachments and their envelope |
@@ -1109,7 +1193,7 @@ releasing something no check has seen.
 | `test_ruleset.py` | The ruleset recorded in `.github/rulesets/master.json`: its required status checks against the jobs that report them, its merge methods against the one the Dependabot auto-merge asks for, and that branches are kept up to date without being required to be: strict mode off, the updater waiting for `master` to stay quiet rather than running on a schedule, announcing a conflict once and forgetting it when it is resolved, and leaving Dependabot's pull requests to Dependabot, which the updater's own step is run against a stubbed `gh` to show |
 | `test_lint.py` | That the ShellCheck gate names every shell script the tree tracks, and nothing that is not one |
 | `test_ci.py` | Which refs the build workflow publishes from — `master` and release tags, never a branch or a pull request — what it runs against the image it has just published, which is not the same on a merge and on a rebuild, that every publication reaches the GHCR mirror too, `latest` and release tags included, and the licence that image states |
-| `test_scan.py` | What the daily image scan does with a finding: the rebuild it dispatches, the re-scan that says whether it worked, and the issue it then closes |
+| `test_scan.py` | What the daily image scan does with a finding: the rebuild it dispatches, the re-scan that says whether it worked, and the issue it then closes. Also two rules every workflow keeps: each job has a timeout, and each workflow states what its token may do |
 | `test_claude_code_settings.py` | The commands a Claude Code session may run here without asking, and that the session-start hook stays registered |
 | `test_sign_off.py` | The sign-off every commit needs: which commits the gate refuses, and that the `git signoff` alias a session is given makes one it accepts; and what else the session-start hook tells a session, on the maintainer's copy and on a fork |
 

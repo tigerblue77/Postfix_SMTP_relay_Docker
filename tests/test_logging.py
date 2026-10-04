@@ -19,14 +19,9 @@ MAIL_LOG_LINE = re.compile(r'^postfix/[\w-]+\[\d+\]: ')
 TIMESTAMPED_MAIL_LOG_LINE = re.compile(
     r'^\d{4}-\d{2}-\d{2}T[\d:.+]+ \S+ postfix/[\w-]+\[\d+\]: ')
 
-# The init script says what it is doing without ending the line, so the first
-# thing postfix logs while it starts or stops follows that text on the same one.
-INIT_SCRIPT_TEXT = re.compile(r'^(Starting|Stopping) the Postfix mail system: /etc/postfix')
-
 
 def postfix_log_lines(container):
-    lines = (INIT_SCRIPT_TEXT.sub('', line) for line in container_log(container).splitlines())
-    return [line for line in lines if 'postfix/' in line]
+    return [line for line in container_log(container).splitlines() if 'postfix/' in line]
 
 
 def test_container_log_has_no_timestamps_by_default(postfix, mailpit, smtp):
@@ -151,6 +146,41 @@ def test_messages_are_forwarded_to_a_remote_syslog_server(postfix_factory, mailp
     # The forwarded lines carry the sending container's hostname, so this is
     # the sender's log and not the receiver's own.
     assert sender.get_wrapped_container().id[:12] in received
+
+
+def test_authentication_messages_are_not_forwarded_either(postfix_factory):
+    """The two facilities kept off stdout are kept off the wire too.
+
+    Forwarding is plain UDP to a collector that is usually shared, so a line
+    too sensitive for docker logs is too sensitive for that. Each rsyslog
+    selector governs its own action, which is how the forward came to carry
+    a bare "*.*" thirteen lines below the filtered stdout one.
+    """
+    receiver = postfix_factory(alias='auth-receiver', files={
+        '/etc/rsyslog.d/10-receiver.conf': ('module(load="imudp")\n'
+                                            'input(type="imudp" port="514")\n'
+                                            '*.* /var/log/received.log\n')})
+    sender = postfix_factory(env={'RSYSLOG_REMOTE_HOST': 'auth-receiver'})
+
+    container_exec(sender, ["logger", "-p", "auth.info", "-t", "probe", "a login attempt"])
+    container_exec(sender, ["logger", "-p", "authpriv.info", "-t", "probe", "a password"])
+    container_exec(sender, ["logger", "-p", "mail.info", "-t", "probe", "a delivery"])
+
+    received = wait_for_file(receiver, '/var/log/received.log', 'a delivery')
+    assert 'a login attempt' not in received
+    assert 'a password' not in received
+
+
+def test_authentication_messages_can_be_added_back_to_stdout(postfix_factory):
+    """What the README gives a user debugging authentication: a file of
+    their own in /etc/rsyslog.d, which is included before the generated
+    actions."""
+    relay = postfix_factory(files={
+        '/etc/rsyslog.d/50-auth.conf': 'auth,authpriv.* /dev/stdout\n'})
+
+    container_exec(relay, ["logger", "-p", "authpriv.info", "-t", "probe", "shown on purpose"])
+
+    assert 'shown on purpose' in wait_for_log(relay, 'shown on purpose')
 
 
 def test_the_remote_port_and_template_can_be_changed(postfix_factory):
@@ -392,6 +422,27 @@ def test_what_postfix_logs_while_it_starts_reaches_the_container_log(postfix_fac
     assert line.startswith('postfix/master[')
 
 
+def test_what_the_init_script_says_is_not_mixed_into_what_postfix_logs(postfix_factory):
+    """The init script's progress text and postfix's own lines stay on lines of their own.
+
+    The script writes "Starting the Postfix mail system: /etc/postfix" without
+    ending the line and finishes it with a "." when postfix is up. With rsyslogd
+    already running, what postfix logs while starting landed in between, and the
+    first line of the log began with the script's text. Stopping did the same.
+    """
+    relay = postfix_factory()
+    restart(relay)
+
+    lines = container_log(relay).splitlines()
+
+    mixed = [line for line in lines
+             if line.startswith(('Starting the Postfix', 'Stopping the Postfix'))
+             and 'postfix/' in line]
+    assert mixed == []
+    assert 'Starting the Postfix mail system: /etc/postfix.' in lines
+    assert 'Stopping the Postfix mail system: /etc/postfix.' in lines
+
+
 def test_the_configuration_is_generated_once_and_kept_across_restarts(
         postfix_factory, mailpit):
     """It is written to the container's own filesystem, so the second start
@@ -408,11 +459,9 @@ def test_the_configuration_is_generated_once_and_kept_across_restarts(
     mailpit.wait_for_message('logged after a restart')
 
     # Only what the second start wrote, which begins at that line now that
-    # rsyslogd comes up first. The init script's own progress text has no
-    # trailing newline, so the first thing postfix logs follows it.
+    # rsyslogd comes up first.
     restarted = container_log(relay).split('Skipping /etc/rsyslog.conf generating')[-1]
-    lines = [INIT_SCRIPT_TEXT.sub('', line) for line in restarted.splitlines()]
-    lines = [line for line in lines if 'postfix/' in line]
+    lines = [line for line in restarted.splitlines() if 'postfix/' in line]
 
     assert lines
     assert all(TIMESTAMPED_MAIL_LOG_LINE.match(line) for line in lines), lines[:3]

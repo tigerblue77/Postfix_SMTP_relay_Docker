@@ -41,6 +41,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/master' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
+# What a job's token may do unless the job says otherwise: read the tree.
+# Written here rather than left to the repository's default, which no diff
+# shows and anyone with admin rights can change. The two jobs that push to the
+# GHCR mirror add packages: write themselves.
+permissions:
+  contents: read
+
 jobs:
   docker:
     name: "Build Image"

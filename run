@@ -103,11 +103,31 @@ awaitGreeting()
     return 1
 }
 
+# Runs an init script and prints what it said in one piece once it is done. The
+# scripts write "Starting ...: name" without ending the line and finish it with
+# a "." when the daemon is up. With rsyslogd already running, what the daemon
+# logs while starting reaches the same stdout in between, and the first line of
+# the log ended up glued to the script's text with the "." on a line of its own.
+# Into files and not pipes, so that a daemon which keeps its descriptors open
+# cannot hold this script up; if they cannot be made, the script is just run.
+runService()
+{
+    local out err status
+
+    out=$(mktemp) && err=$(mktemp) || { rm -f "$out" ; service "$@" ; return ; }
+    service "$@" > "$out" 2> "$err"
+    status=$?
+    cat "$out"
+    cat "$err" >&2
+    rm -f "$out" "$err"
+    return $status
+}
+
 startService()
 {
     local name="$1" process="$2"
 
-    service "$name" start
+    runService "$name" start
     awaitProcess "$process" && return
 
     echo "$name did not start, refusing to relay without it." >&2
@@ -496,7 +516,7 @@ stopDaemons()
     # they may not signal there: postsrsd matches two, and the chrooted worker
     # that dropped privileges is refused even though the root process holding
     # it is signalled and takes the worker with it.
-    service postfix stop
+    runService postfix stop
     pkill -x -TERM opendkim 2> /dev/null
     pkill -x -TERM postsrsd 2> /dev/null
     pkill -TERM saslauthd
@@ -573,8 +593,12 @@ EOF
   if [ -z ${RSYSLOG_REMOTE_TEMPLATE} ] ; then
     RSYSLOG_REMOTE_TEMPLATE=RSYSLOG_ForwardFormat
   fi
+  # The same two facilities are held back from the remote server as from
+  # stdout, for the same reason: a password can end up in an auth line, and
+  # this goes out over plain UDP to a collector nobody here controls. Each
+  # selector governs its own action only, so the filter has to be repeated.
   if [ ! -z ${RSYSLOG_REMOTE_HOST} ] ; then
-    echo "*.* action(type=\"omfwd\" target=\"${RSYSLOG_REMOTE_HOST}\" port=\"${RSYSLOG_REMOTE_PORT}\" template=\"${RSYSLOG_REMOTE_TEMPLATE}\")" >> /etc/rsyslog.conf
+    echo "*.*;auth,authpriv.none action(type=\"omfwd\" target=\"${RSYSLOG_REMOTE_HOST}\" port=\"${RSYSLOG_REMOTE_PORT}\" template=\"${RSYSLOG_REMOTE_TEMPLATE}\")" >> /etc/rsyslog.conf
   fi
 fi
 
@@ -642,6 +666,19 @@ EOF
   }
 fi
 
+# postconf -e writes whatever name it is given, and only postconf's display
+# mode says when postfix uses none of them. Asked once, now that the whole
+# configuration is written, so that a misspelt variable -- POSTFIX_mynetwork
+# for mynetworks, which leaves the shipped 0.0.0.0/0 in place -- is named in
+# the log rather than quietly doing nothing. It stays a warning: a typo must
+# not cost the mail, and a clean configuration prints nothing here.
+unused=$(postconf 2>&1 > /dev/null)
+if [ -n "$unused" ] ; then
+  echo "$unused" >&2
+  echo "A POSTFIX_ or POSTFIXMASTER_ variable names a parameter postfix does not use," \
+       "so it has no effect: check its spelling against the warning above." >&2
+fi
+
 startService postfix master
 
 # A running master is not the same as a postfix that can serve. Master binds
@@ -677,6 +714,34 @@ if [ -n "$smtpdPort" ] ; then
   echo "$smtpdAddress $smtpdPort" > "$greeted"
 else
   rm -f "$greeted"
+fi
+
+# Two settings the image ships on purpose, and which are wrong as soon as the
+# relay can be reached from further than its docker network or talks to a
+# receiver that checks HELO. Each one is said on every start and nothing is
+# refused: both work as documented. The effective values are read back rather
+# than the environment, because a _FILE secret, a mounted main.cf or a compose
+# fragment all reach the same setting by other roads. "Open" means mynetworks
+# covers every address and the relay restrictions still let mynetworks relay;
+# a relay that narrowed either one is not warned (issue #13).
+networks=" $(postconf -hx mynetworks | tr ',\t' '  ') "
+restrictions=" $(postconf -hx smtpd_relay_restrictions | tr ',\t' '  ') "
+case "$networks" in
+  *" 0.0.0.0/0 "*|*" ::/0 "*|*" [::]/0 "*)
+    if [[ "$restrictions" == *" permit_mynetworks "* ]] ; then
+      echo "Warning: mynetworks covers every address, so this relay passes on" \
+           "mail from anything that can reach its port. That is the image's" \
+           "default and is safe only while the port is not published beyond" \
+           "its docker network: set POSTFIX_mynetworks, or see \"Securing the" \
+           "relay\" in the README." >&2
+    fi
+    ;;
+esac
+myhostname=$(postconf -hx myhostname)
+if [[ "$myhostname" != *.* ]] ; then
+  echo "Warning: myhostname is '$myhostname', not a fully qualified name, and" \
+       "many receivers refuse a HELO that is not one: set POSTFIX_myhostname to" \
+       "the name this relay's address resolves back to." >&2
 fi
 
 # rsyslogd is the only one of them that is a job of this script -- the other

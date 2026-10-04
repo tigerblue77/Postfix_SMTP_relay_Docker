@@ -220,6 +220,19 @@ def container_stderr(container):
     return container.get_logs()[1].decode()
 
 
+def stderr_once_started(container, timeout=DEFAULT_TIMEOUT):
+    """What "run" wrote on stderr by the time its start-up was over.
+
+    A relay answers on port 25 before "run" is done: its own greeting probe,
+    and whatever it says after it, are still to come. The supervision loop is
+    the last thing it reaches, and its "sleep 2" is the only one pid 1 ever
+    starts, so that is what says there is nothing more to wait for.
+    """
+    poll_until(lambda: container.exec(["pgrep", "-P", "1", "-fx", "sleep 2"]).exit_code == 0,
+               timeout=timeout, description='"run" to reach its supervision loop')
+    return container_stderr(container)
+
+
 def wait_for_log(container, text, timeout=DEFAULT_TIMEOUT):
     """Wait for a line in the container log and return the whole log."""
     return poll_until(lambda: text in container_log(container) and container_log(container),

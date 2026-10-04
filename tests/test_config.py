@@ -14,7 +14,8 @@ import pytest
 
 from tests.helpers import (container_exec, container_log, container_stderr,
                            esmtp_features, exit_code_within, listening_ports,
-                           postconf, send, send_raw, smtp_connect, wait_for_log)
+                           postconf, send, send_raw, smtp_connect,
+                           stderr_once_started, wait_for_log)
 
 
 def test_postfix_variables_configure_main_cf(postfix_factory, mailpit):
@@ -161,6 +162,24 @@ def test_mynetworks_restricts_who_may_relay(postfix_factory, mailpit):
     mailpit.assert_nothing_delivered()
 
 
+@pytest.mark.parametrize('closed', [
+    {'POSTFIX_mynetworks': '127.0.0.0/8'},
+    {'POSTFIX_smtpd_relay_restrictions': 'permit_sasl_authenticated,reject'},
+], ids=['by address', 'by authentication'])
+def test_a_relay_set_up_as_the_readme_says_is_not_warned_about(postfix_factory, closed):
+    """The two start-up warnings are about the shipped defaults, not about a
+    relay whose operator already did what "Securing the relay" and the
+    myhostname note ask: closing relaying down either way the README shows,
+    and naming the relay (issue #13).
+    """
+    relay = postfix_factory(env={'POSTFIX_myhostname': 'smtp.example.test', **closed})
+
+    stderr = stderr_once_started(relay)
+
+    assert 'mynetworks covers every address' not in stderr
+    assert 'not a fully qualified name' not in stderr
+
+
 # Two tables and the settings that use them, in one relay: writing the file,
 # indexing it and reading it back are the three things POSTMAP_ has to do.
 TABLES = {
@@ -301,13 +320,19 @@ def test_a_parameter_postfix_does_not_know_does_not_stop_the_relay(postfix_share
     """A typo in a variable name must not cost the mail.
 
     postconf writes whatever it is given, so the value ends up in main.cf
-    and postfix reports it as unused rather than refusing to start.
+    and postfix reports it as unused rather than refusing to start -- and
+    the report reaches the container log, which is the only place a user
+    would read it. postfix only reports it to whoever asks, and nothing used
+    to ask.
     """
     relay = postfix_shared(env={'POSTFIX_no_such_postfix_parameter': 'whatever'})
 
     assert container_exec(relay, ["grep", "no_such_postfix_parameter",
                                   "/etc/postfix/main.cf"]).strip() == \
         'no_such_postfix_parameter = whatever'
+    stderr = container_stderr(relay)
+    assert 'unused parameter: no_such_postfix_parameter=whatever' in stderr
+    assert 'check its spelling' in stderr
 
     send(relay, subject='relayed anyway')
 

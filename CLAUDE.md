@@ -33,7 +33,7 @@ which is where contributor branches lived then.
 | Path | Role |
 | --- | --- |
 | `Dockerfile` | Debian base pin (`FROM debian:trixie-<date>-slim`), `apt-get full-upgrade` before the named packages and `apt-get autoremove --purge` after them (invariant 37), the conditional `postsrsd` install, the build-time deletion of `/etc/rsyslog.conf` and `/etc/postsrsd.secret`, the default `ENV` block, `COPY run healthcheck /root/` and then `COPY LICENSE NOTICE LICENSE-COMMERCIAL.md /root/`, the OCI `LABEL`s including `org.opencontainers.image.licenses=AGPL-3.0-only` (which `ci.yml` has to repeat, see its row), `VOLUME`, `EXPOSE 25`, `HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["/root/healthcheck"]` and `CMD ["/root/run"]`. No `ENTRYPOINT`, no `ARG`. |
-| `run` | The entrypoint. Resolves `<NAME>_FILE` secrets, turns `POSTFIX_*`, `POSTFIXMASTER_*`, `POSTMAP_*`, `OPENDKIM_*`, `POSTSRSD_*`, `RSYSLOG_*`, `SASL_Passwds` and `POSTMASTER_ADDRESS` into config, starts the daemons, asks postfix for an SMTP greeting, then runs a `pgrep`-polling supervision loop. Nearly all behaviour lives here. |
+| `run` | The entrypoint. Resolves `<NAME>_FILE` secrets, turns `POSTFIX_*`, `POSTFIXMASTER_*`, `POSTMAP_*`, `OPENDKIM_*`, `POSTSRSD_*`, `RSYSLOG_*`, `SASL_Passwds` and `POSTMASTER_ADDRESS` into config, starts the daemons, asks postfix for an SMTP greeting, warns on stderr while the shipped open `mynetworks` or unqualified `myhostname` is still in effect, then runs a `pgrep`-polling supervision loop. Nearly all behaviour lives here. |
 | `healthcheck` | `pgrep`s `master`, checks a listening socket for every `inet` service in `postconf -M` — and fails when `postconf -M` does, or lists none — asks postfix for a greeting once the last one is five minutes old, then `rsyslogd` always, `opendkim`/`postsrsd` whenever the environment *or the artefacts start-up left behind* say so, and `saslauthd` when `SASL_Passwds` is set. |
 | `pytest.ini` | `addopts = -n auto --dist loadfile --maxprocesses 4` and one registered marker, `smoke`. No `testpaths`, no `filterwarnings`, no `xfail_strict`. |
 | `.dockerignore` | Keeps `.git`, `README.md`, `SECURITY.md`, `tests`, `pytest.ini`, `CLAUDE.md` and `.claude` out of the build context. Not `LICENSE`: the image has to carry it, so it has to reach the context. |
@@ -474,6 +474,11 @@ Notes a contributor will hit:
   a job that does not, which is
   not a style rule: a job without it runs to github's default of six hours,
   and the three that had none included **Build Image**, a required check.
+  Every workflow likewise states its token's `permissions:` at the top, as
+  little as it needs, and `tests/test_scan.py` fails on one that does not:
+  left out, the token gets the repository's default, which no diff shows. A
+  job widens it only for itself, the way the two in `ci.yml` that push the
+  GHCR mirror add `packages: write`. (issue #18)
 - **One action is pinned to a commit**, `EnricoMi/publish-unit-test-result-action`
   in `test-results.yml`; everything else is on a major tag, and Dependabot's
   weekly `github-actions` ecosystem bumps them. Do not "normalise" that
@@ -553,10 +558,12 @@ Notes a contributor will hit:
   one: `tests/__init__.py` stays empty, and neither the two unbuilt anchors
   under `tests/`, the JSON files, `pytest.ini`, `tests/requirements.txt`,
   `.dockerignore`, `.gitignore`, `LICENSE`, `NOTICE`, `README.md`,
-  `SECURITY.md` nor this file has one.
-  `auto_update_pull_request_branches.yml` is the one header that differs: its
-  copyright line is the notice the file was first published under, and a
-  copyright notice is kept as written rather than normalised. The project is
+  `SECURITY.md` nor this file has one. The copyright line is the same on
+  every header, the project's own: `2015-2026 Mattias Wadman, Tigerblue77 and
+  the postfix-relay contributors`. A file written elsewhere and brought in
+  here takes it too, because a line naming another project's contributors
+  says that people who never touched the file hold it, and the commercial
+  licence covers only what this project holds. The project is
   `AGPL-3.0-only` with a commercial alternative ([LICENSE](LICENSE),
   [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md), [NOTICE](NOTICE)); it was
   MIT until the commit that added `NOTICE`.
@@ -1481,4 +1488,11 @@ changing any of them.
     after postfix: the comment on it that says it follows rsyslogd is still
     true, and is now true of everything else too. The `Skipping
     /etc/rsyslog.conf generating` line therefore comes first in the log of a
-    restarted container, which `tests/test_logging.py` splits on. (issue #11)
+    restarted container, which `tests/test_logging.py` splits on. The init
+    scripts go through `runService` for the same reason: they write
+    `Starting ...: name` without ending the line and finish it with a `.`, so
+    with rsyslogd already running what a daemon logs while starting landed in
+    the middle of that line, and the first line of the log began with the
+    script's text. `runService` collects what the script says and prints it
+    once it is done, to files and not pipes because a daemon that keeps its
+    descriptors open would hold a pipe, and so this script, up. (issue #11)
