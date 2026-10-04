@@ -11,9 +11,7 @@ context that never reports blocks every pull request until someone with admin
 rights notices. The same goes for the merge method the Dependabot auto-merge
 asks for, which the ruleset can refuse just as silently, and for the branch
 updater, which the ruleset leaves best effort by not requiring branches to be
-up to date. And the auto-merge is only as safe as what reaches it: the update
-entries of `.github/dependabot.yml` each set a cooldown of at least seven days,
-bar the one dependency, the Debian base image, that is deliberately excluded.
+up to date.
 
 These tests read files, and run the branch updater's step against a stubbed
 `gh`; they start no container, so they need no docker daemon.
@@ -32,7 +30,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 RULESET = REPO_ROOT / ".github" / "rulesets" / "master.json"
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 AUTO_MERGE = WORKFLOWS / "dependabot-auto-merge.yml"
-DEPENDABOT = REPO_ROOT / ".github" / "dependabot.yml"
 UPDATER = WORKFLOWS / "auto_update_pull_request_branches.yml"
 MERGE_METHODS = {"--merge": "merge", "--squash": "squash", "--rebase": "rebase"}
 
@@ -147,112 +144,6 @@ def test_dependabot_merges_by_a_method_the_ruleset_allows():
         f"{AUTO_MERGE.name} merges by {methods[0]!r}, which the ruleset does "
         f"not allow; it allows {sorted(allowed)}"
     )
-
-
-def dependabot_updates():
-    """The `updates` entries of `.github/dependabot.yml`, keyed by what makes
-    each one distinct: its ecosystem and the directory it reads."""
-    updates = yaml.safe_load(DEPENDABOT.read_text())["updates"]
-    keyed = {(u["package-ecosystem"], u["directory"]): u for u in updates}
-    assert len(keyed) == len(updates), (
-        "two update entries share an ecosystem and a directory; Dependabot "
-        "refuses the file, and this test could not tell them apart"
-    )
-    return keyed
-
-
-# The Dockerfile's base image, the one entry whose dependency is excluded from
-# the cooldown: it is the official Debian image, a new tag is how a security fix
-# reaches the base the image is built on, and the Dockerfile pulls the packages'
-# own fixes at build time anyway. Its comment in dependabot.yml says the same.
-BASE_IMAGE_UPDATE = ("docker", "/")
-BASE_IMAGE_DEPENDENCY = "debian"
-# Dependabot waits three days after a release whenever an entry has no
-# `cooldown` block, and whenever a block does not say `default-days`. Seven is
-# what this repository sets instead, and what zizmor's dependabot-cooldown audit
-# asks for unless it is told otherwise.
-MINIMUM_COOLDOWN_DAYS = 7
-# The ecosystems whose cooldown takes a number of days per semver level; the
-# others take `default-days` alone.
-SEMVER_ECOSYSTEMS = {"pip"}
-SEMVER_DAYS = ("semver-major-days", "semver-minor-days", "semver-patch-days")
-
-
-def test_every_dependabot_update_sets_a_cooldown_and_only_the_base_image_excludes_one():
-    """The auto-merge merges a semver minor or patch bump by itself once the
-    checks pass. Dependabot already waits three days after a release before it
-    proposes a version update, with no `cooldown` at all; an entry without the
-    block is therefore not exempt, it gets that default, and a missing block
-    cannot be told from a forgotten one. So every entry sets `default-days`,
-    to at least seven, and a cooldown applies to version updates only: a
-    security update is never delayed.
-
-    The base image of the Dockerfile is the one dependency that goes without:
-    its entry excludes `debian` from the cooldown, so that a new tag is
-    proposed at once. Both halves are pinned, so that a new entry cannot be
-    added without a cooldown, and the exclusion cannot spread to the entries
-    that are auto-merged by copying the base image's.
-    """
-    updates = dependabot_updates()
-    for key, u in updates.items():
-        cooldown = u.get("cooldown")
-        assert cooldown, (
-            f"the update entry {key} has no cooldown block, so it waits "
-            f"Dependabot's default of three days; set `default-days` to at "
-            f"least {MINIMUM_COOLDOWN_DAYS}"
-        )
-        days = cooldown.get("default-days")
-        assert isinstance(days, int) and days >= MINIMUM_COOLDOWN_DAYS, (
-            f"the cooldown of {key} has a `default-days` of {days!r}, under "
-            f"the {MINIMUM_COOLDOWN_DAYS} days this repository sets"
-        )
-    excluding = {key: u["cooldown"]["exclude"] for key, u in updates.items() if "exclude" in u["cooldown"]}
-    assert excluding == {BASE_IMAGE_UPDATE: [BASE_IMAGE_DEPENDENCY]}, (
-        f"cooldown exclusions are {excluding}; expected only the base image "
-        f"{BASE_IMAGE_UPDATE} excluding {BASE_IMAGE_DEPENDENCY!r}. An excluded "
-        f"dependency is updated the day it is released, so each one is a "
-        f"decision to argue in dependabot.yml and in this test"
-    )
-    assert all("include" not in u["cooldown"] for u in updates.values()), (
-        "an `include` list narrows a cooldown to the dependencies it names, "
-        "which leaves every other one on Dependabot's three days"
-    )
-
-
-def test_dependabot_cooldowns_only_use_keys_their_ecosystem_takes():
-    """`semver-major-days`, `-minor-days` and `-patch-days` exist for the
-    semver ecosystems only (here pip); github-actions and docker take
-    `default-days`, and `include` and `exclude`, alone. No workflow validates
-    the file: Dependabot's own check on a pull request that touches it is not
-    a required one, and what Dependabot reports once the file is on master
-    shows only on the repository's Insights > Dependency graph > Dependabot
-    page, so what can be checked from the file is checked here. pip's major
-    releases wait at least as long as its minor and patch ones, which is the
-    reason it has the per-level keys at all, and none waits less than the
-    minimum.
-    """
-    for (ecosystem, directory), u in dependabot_updates().items():
-        cooldown = u.get("cooldown", {})
-        takes = {"default-days", "include", "exclude"}
-        if ecosystem in SEMVER_ECOSYSTEMS:
-            takes |= set(SEMVER_DAYS)
-        stray = set(cooldown) - takes
-        assert not stray, (
-            f"the {ecosystem} entry on {directory} gives its cooldown {sorted(stray)}, "
-            f"which that ecosystem does not take; it takes {sorted(takes)}"
-        )
-        if ecosystem in SEMVER_ECOSYSTEMS:
-            major, minor, patch = (cooldown.get(k) for k in SEMVER_DAYS)
-            assert all(isinstance(d, int) for d in (major, minor, patch)), (
-                f"the {ecosystem} cooldown sets {SEMVER_DAYS} to "
-                f"{(major, minor, patch)}; every level needs a number of days"
-            )
-            assert major >= minor and min(minor, patch) >= MINIMUM_COOLDOWN_DAYS, (
-                f"the {ecosystem} cooldown waits {major}, {minor} and {patch} "
-                f"days for a major, minor and patch release; a major release "
-                f"should wait at least as long as a minor one, and none may wait "
-                f"under {MINIMUM_COOLDOWN_DAYS}"
-            )
 
 
 def test_branches_are_not_required_to_be_up_to_date():
@@ -520,3 +411,109 @@ def test_the_branch_updater_announces_a_conflict_once_and_forgets_it_when_it_is_
     assert summary.strip() == "Updated 2 pull request(s), announced 1 conflict(s).", (
         f"the step summary does not say what the pass did:\n{summary}"
     )
+
+
+DEPENDABOT = REPO_ROOT / ".github" / "dependabot.yml"
+# Dependabot waits three days after a release whenever an entry has no
+# `cooldown` block, and whenever a block does not say `default-days`. Seven is
+# what this repository sets instead, and what zizmor's dependabot-cooldown audit
+# asks for unless it is told otherwise.
+MINIMUM_COOLDOWN_DAYS = 7
+# The ecosystems whose cooldown takes a number of days per semver level; the
+# others take `default-days` as their only day count.
+SEMVER_ECOSYSTEMS = {"pip"}
+SEMVER_DAYS = ("semver-major-days", "semver-minor-days", "semver-patch-days")
+# Entries whose cooldown carries an `include` or an `exclude` list, as
+# {(ecosystem, directory): why}. Empty, and meant to stay so: an excluded
+# dependency is updated the day it is released, an included-only list leaves
+# every other dependency on Dependabot's three days, and the entries here are
+# the ones the auto-merge lands unattended. The Debian base image is the
+# candidate that was considered and left out, for the reasons in dependabot.yml.
+COOLDOWN_LISTS = {}
+
+
+def dependabot_updates():
+    """The `updates` entries of `.github/dependabot.yml`, keyed by what makes
+    each one distinct: its ecosystem and the directory it reads."""
+    updates = yaml.safe_load(DEPENDABOT.read_text())["updates"]
+    keyed = {(u["package-ecosystem"], u["directory"]): u for u in updates}
+    assert len(keyed) == len(updates), (
+        "two update entries share an ecosystem and a directory; Dependabot "
+        "refuses the file, and this test could not tell them apart"
+    )
+    return keyed
+
+
+def test_every_dependabot_update_sets_a_cooldown_of_at_least_seven_days():
+    """The auto-merge merges a semver minor or patch bump by itself once the
+    checks pass. Dependabot already waits three days after a release before it
+    proposes a version update, with no `cooldown` at all; an entry without the
+    block is therefore not exempt, it gets that default, and a missing block
+    cannot be told from a forgotten one. So every entry sets `default-days`, to
+    at least seven, the Debian base image of the Dockerfile included. A cooldown
+    applies to version updates only: a security update is never delayed.
+
+    No entry carries an `include` or `exclude` list unless COOLDOWN_LISTS says
+    why: an excluded dependency skips the cooldown altogether, which for the
+    Debian entry would mean a tag proposed, and with the auto-merge of the base
+    image merged, on the day it is published.
+    """
+    updates = dependabot_updates()
+    for key, u in updates.items():
+        cooldown = u.get("cooldown")
+        assert cooldown, (
+            f"the update entry {key} has no cooldown block, so it waits "
+            f"Dependabot's default of three days; set `default-days` to at "
+            f"least {MINIMUM_COOLDOWN_DAYS}"
+        )
+        days = cooldown.get("default-days")
+        assert isinstance(days, int) and days >= MINIMUM_COOLDOWN_DAYS, (
+            f"the cooldown of {key} has a `default-days` of {days!r}, under "
+            f"the {MINIMUM_COOLDOWN_DAYS} days this repository sets"
+        )
+    listed = {key for key, u in updates.items() if {"include", "exclude"} & set(u["cooldown"])}
+    assert listed == set(COOLDOWN_LISTS), (
+        f"cooldowns with an include or exclude list: {sorted(listed)}; argued "
+        f"for in COOLDOWN_LISTS: {sorted(COOLDOWN_LISTS)}. Each one changes "
+        f"which dependencies wait, so it is a decision to argue there and in "
+        f"dependabot.yml, not a line to append"
+    )
+    assert all(isinstance(why, str) and why.strip() for why in COOLDOWN_LISTS.values()), (
+        "every entry of COOLDOWN_LISTS needs a reason"
+    )
+
+
+def test_dependabot_cooldowns_only_use_keys_their_ecosystem_takes():
+    """`semver-major-days`, `-minor-days` and `-patch-days` exist for the
+    semver ecosystems only (here pip); github-actions and docker take
+    `default-days` as their only day count, with `include` and `exclude` besides.
+    No workflow validates the file: Dependabot's own check on a pull request
+    that touches it is not a required one, and what Dependabot reports once the
+    file is on master shows only on the repository's Insights > Dependency graph
+    > Dependabot page, so what can be checked from the file is checked here.
+    pip's major releases wait at least as long as its minor and patch ones,
+    which is the reason it has the per-level keys at all, and none waits under
+    the minimum.
+    """
+    for (ecosystem, directory), u in dependabot_updates().items():
+        cooldown = u.get("cooldown", {})
+        takes = {"default-days", "include", "exclude"}
+        if ecosystem in SEMVER_ECOSYSTEMS:
+            takes |= set(SEMVER_DAYS)
+        stray = set(cooldown) - takes
+        assert not stray, (
+            f"the {ecosystem} entry on {directory} gives its cooldown {sorted(stray)}, "
+            f"which that ecosystem does not take; it takes {sorted(takes)}"
+        )
+        if ecosystem in SEMVER_ECOSYSTEMS:
+            major, minor, patch = (cooldown.get(k) for k in SEMVER_DAYS)
+            assert all(isinstance(d, int) for d in (major, minor, patch)), (
+                f"the {ecosystem} cooldown sets {SEMVER_DAYS} to "
+                f"{(major, minor, patch)}; every level needs a number of days"
+            )
+            assert major >= minor and min(minor, patch) >= MINIMUM_COOLDOWN_DAYS, (
+                f"the {ecosystem} cooldown waits {major}, {minor} and {patch} "
+                f"days for a major, minor and patch release; a major release "
+                f"should wait at least as long as a minor one, and none may wait "
+                f"under {MINIMUM_COOLDOWN_DAYS}"
+            )
