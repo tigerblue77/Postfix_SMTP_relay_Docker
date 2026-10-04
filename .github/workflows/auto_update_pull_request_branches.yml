@@ -177,6 +177,16 @@ jobs:
         with:
           client-id: ${{ vars.PULL_REQUESTS_UPDATE_APP_CLIENT_ID }}
           private-key: ${{ secrets.PULL_REQUESTS_UPDATE_APP_PRIVATE_KEY }}
+          # Exactly the three permissions the header says this job needs, so
+          # that the token is no broader than the job and does not inherit
+          # whatever else the installation was granted (zizmor's github-app).
+          # They can only narrow the installation, never widen it: an App that
+          # lacks one of them fails here, when the token is minted, instead of
+          # refusing the first update that needs it. Pull requests covers the
+          # conflict comments, which go through the issues endpoints.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
 
       - name: Rebase every conflict-free pull request that is behind master
         env:

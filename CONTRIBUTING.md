@@ -77,7 +77,7 @@ If you are a contributor rather than the maintainer, most of this does not conce
 
 ## Licence headers
 
-Every source file carries a two-line [SPDX](https://spdx.dev/) header: right after the shebang in a script, at the very top of a Python module, a workflow, `.github/dependabot.yml` or the `Dockerfile`, and in an HTML comment at the top of this page and of [`LICENSE-COMMERCIAL.md`](./LICENSE-COMMERCIAL.md). The JSON files, `pytest.ini`, `tests/requirements.txt`, the ignore files, the licence texts and the rest of the documentation carry none.
+Every source file carries a two-line [SPDX](https://spdx.dev/) header: right after the shebang in a script, at the very top of a Python module, a workflow, `.github/dependabot.yml`, `.github/actionlint.yaml`, `.github/zizmor.yml` or the `Dockerfile`, and in an HTML comment at the top of this page and of [`LICENSE-COMMERCIAL.md`](./LICENSE-COMMERCIAL.md). The JSON files, `pytest.ini`, `tests/requirements.txt`, the ignore files, the licence texts and the rest of the documentation carry none.
 
 ```bash
 #!/bin/bash

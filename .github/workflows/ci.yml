@@ -378,13 +378,19 @@ jobs:
         # fails here rather than in a test. By digest rather than by tag: this
         # is the image this run pushed, not whatever a master run finishing
         # alongside it has since put under the same name.
-        run: docker pull "${{ steps.reponame.outputs.DOCKER_REPO }}@${{ needs.docker.outputs.digest }}"
+        run: docker pull "${IMAGE}@${DIGEST}"
+        env:
+          IMAGE: ${{ steps.reponame.outputs.DOCKER_REPO }}
+          DIGEST: ${{ needs.docker.outputs.digest }}
 
       - name: Setup python
         uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-          cache: 'pip'
+          # No pip cache, unlike the jobs of test.yml: this workflow publishes,
+          # and a cache a publishing job restores is a way for something it
+          # should not trust to reach what it publishes (zizmor's
+          # cache-poisoning). Seven pinned packages are cheap to download.
 
       - name: Install Python dependencies
         run: pip install -r tests/requirements.txt
@@ -462,13 +468,19 @@ jobs:
           DOCKER_REPO: "${{ secrets.DOCKER_REPO }}"
 
       - name: Pull the published image
-        run: docker pull "${{ steps.reponame.outputs.DOCKER_REPO }}@${{ needs.docker.outputs.digest }}"
+        run: docker pull "${IMAGE}@${DIGEST}"
+        env:
+          IMAGE: ${{ steps.reponame.outputs.DOCKER_REPO }}
+          DIGEST: ${{ needs.docker.outputs.digest }}
 
       - name: Setup python
         uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-          cache: 'pip'
+          # No pip cache, unlike the jobs of test.yml: this workflow publishes,
+          # and a cache a publishing job restores is a way for something it
+          # should not trust to reach what it publishes (zizmor's
+          # cache-poisoning). Seven pinned packages are cheap to download.
 
       - name: Install Python dependencies
         run: pip install -r tests/requirements.txt

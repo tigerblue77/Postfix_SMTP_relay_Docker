@@ -1190,8 +1190,8 @@ releasing something no check has seen.
 | `test_secrets.py` | Configuration read from a file instead of the environment, and what the health check still expects |
 | `test_qshape.py` | The queue tool the troubleshooting section has users run |
 | `test_upgrade.py` | Starting on the state the last released image wrote, which is what the "Upgrading" section promises |
-| `test_ruleset.py` | The ruleset recorded in `.github/rulesets/master.json`: its required status checks against the jobs that report them, its merge methods against the one the Dependabot auto-merge asks for, and that branches are kept up to date without being required to be: strict mode off, the updater waiting for `master` to stay quiet rather than running on a schedule, announcing a conflict once and forgetting it when it is resolved, and leaving Dependabot's pull requests to Dependabot, which the updater's own step is run against a stubbed `gh` to show. Also that every update entry of `.github/dependabot.yml` waits out a cooldown but the base image's, and takes only the cooldown keys its ecosystem does |
-| `test_lint.py` | That the ShellCheck gate names every shell script the tree tracks, and nothing that is not one |
+| `test_ruleset.py` | The ruleset recorded in `.github/rulesets/master.json`: its required status checks against the jobs that report them, that the two workflow linters are among them and report on every pull request, its merge methods against the one the Dependabot auto-merge asks for, and that branches are kept up to date without being required to be: strict mode off, the updater waiting for `master` to stay quiet rather than running on a schedule, announcing a conflict once and forgetting it when it is resolved, and leaving Dependabot's pull requests to Dependabot, which the updater's own step is run against a stubbed `gh` to show. Also that every update entry of `.github/dependabot.yml` waits out a cooldown but the base image's, and takes only the cooldown keys its ecosystem does |
+| `test_lint.py` | That the ShellCheck gate names every shell script the tree tracks, and nothing that is not one; and that the workflow linters, actionlint and zizmor, stay pinned (by version, and for zizmor by wheel hash) and offline, and let through only the suppressions argued for in the tree |
 | `test_ci.py` | Which refs the build workflow publishes from — `master` and release tags, never a branch or a pull request — what it runs against the image it has just published, which is not the same on a merge and on a rebuild, that every publication reaches the GHCR mirror too, `latest` and release tags included, and the licence that image states |
 | `test_scan.py` | What the daily image scan does with a finding: the rebuild it dispatches, the re-scan that says whether it worked, and the issue it then closes. Also three rules every workflow keeps: each job has a timeout, each workflow states what its token may do, and each `actions/checkout` drops that token from `.git/config` instead of leaving it for the steps after it |
 | `test_claude_code_settings.py` | The commands a Claude Code session may run here without asking, and that the session-start hook stays registered |
@@ -1258,6 +1258,26 @@ being invisible in a pytest run, which simply collects the second definition
 and never reports the first. Style, import order and formatting are not
 checked, and widening the selection would mean changing code that is already
 correct.
+
+The workflows themselves are linted too, by two tools that read the yaml and
+nothing else, so neither needs docker: [actionlint](https://github.com/rhysd/actionlint)
+for what makes a workflow wrong, such as a bad expression or an input the
+action does not have, and [zizmor](https://docs.zizmor.sh/) for what makes one
+unsafe, such as a token left in `.git/config` or an expression expanded into a
+script. Both run on every pull request and both are required:
+
+```bash
+actionlint -shellcheck= -pyflakes=
+zizmor --offline .
+```
+
+actionlint is built with `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`
+and zizmor installed with `pip install zizmor==1.30.1`, the versions CI pins.
+shellcheck and pyflakes are left off in actionlint on purpose, so that its
+verdict does not depend on what else happens to be installed, and zizmor runs
+offline so that the same tree always gets the same answer. Their configuration
+is `.github/actionlint.yaml` and `.github/zizmor.yml`, which they read by
+themselves.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 

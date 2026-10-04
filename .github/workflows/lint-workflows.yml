@@ -1,0 +1,121 @@
+# SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: lint-workflows
+
+on:
+  push:
+    branches:
+      - 'master'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+# Reading the tree is all either job does with its token. Written here rather
+# than left to the repository's default, which no diff shows and anyone with
+# admin rights can change.
+permissions:
+  contents: read
+
+# What these two gates are, and what they deliberately are not.
+#
+# The workflows are code that runs with this repository's token and its
+# registry credentials, and they had no linter: lint.yml reads the shell scripts
+# and the python, not the yaml that runs them. actionlint catches what makes a
+# workflow wrong -- a bad expression, an unknown input, a misspelt context --
+# and a workflow is where this repository has already shipped a wrong
+# expression: an "if:" comparing a skipped step's output with a number, which
+# read as true on exactly the paths where the step had not run (CLAUDE.md,
+# invariant 36). zizmor catches what makes one unsafe: a token left in
+# .git/config, an expression expanded into a script, a permission nobody asked
+# for.
+#
+# Both are pinned and neither reads the network once installed, for the reason
+# lint.yml gives for its own: a linter that moves fails somebody's unrelated
+# pull request on the day it ships a new check. Nothing bumps these pins either;
+# moving to a newer one is a deliberate edit, and so is every suppression, of
+# which there are three -- .github/actionlint.yaml and .github/zizmor.yml say
+# which and why, and tests/test_lint.py fails when the list changes without
+# being edited there.
+
+jobs:
+  actionlint:
+    name: "actionlint"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ACTIONLINT_VERSION: v1.7.12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the token is not left in .git/config.
+          persist-credentials: false
+
+      - name: Install actionlint
+        # Built from source by "go install", which the runner image has. The Go
+        # checksum database authenticates the module at that version, which is
+        # what a release checksum does for the linters in lint.yml. actionlint
+        # 1.7.12 needs a newer Go than the runner image may carry, and Go then
+        # fetches that toolchain itself, authenticated the same way. Into
+        # RUNNER_TEMP, so the tree the next step reads is only what git has.
+        run: |
+          set -eu
+          GOBIN="${RUNNER_TEMP}/actionlint" go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
+          echo "${RUNNER_TEMP}/actionlint" >> "${GITHUB_PATH}"
+
+      - name: Check the workflows
+        # shellcheck and pyflakes are switched off on purpose. Both only run if
+        # they are installed, so leaving them on would make the verdict depend
+        # on what the runner image happens to carry that week; and the shell in
+        # a "run:" block is not what the ShellCheck gate in lint.yml reads --
+        # that names its scripts one by one -- so turning it on here would
+        # start linting code nobody has ever held to a threshold.
+        run: |
+          actionlint -version
+          actionlint -shellcheck= -pyflakes=
+
+  zizmor:
+    name: "zizmor"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ZIZMOR_VERSION: 1.30.1
+      # The manylinux_2_28 x86_64 wheel of that version, which is the one pip
+      # picks on the runner. With --require-hashes pip refuses any other file,
+      # whatever PyPI is serving under that name.
+      ZIZMOR_WHEEL_SHA256: eee12266b793cb87ad4a7e3af2e72404f8a63e3de5eb099b80bf7b1cfd232a8e
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # No later step uses git against the remote, so the token is not left in .git/config.
+          persist-credentials: false
+
+      - name: Install zizmor
+        # In a virtualenv under RUNNER_TEMP, from a requirements file that
+        # carries the hash: --only-binary because there is nothing to build,
+        # and --require-hashes so that a wheel that is not the one above, or a
+        # dependency that is not hashed, stops the install.
+        run: |
+          set -eu
+          python3 -m venv "${RUNNER_TEMP}/zizmor"
+          printf 'zizmor==%s --hash=sha256:%s\n' "${ZIZMOR_VERSION}" "${ZIZMOR_WHEEL_SHA256}" \
+            > "${RUNNER_TEMP}/zizmor-requirements.txt"
+          "${RUNNER_TEMP}/zizmor/bin/pip" install --quiet --disable-pip-version-check --require-hashes --only-binary :all: \
+            -r "${RUNNER_TEMP}/zizmor-requirements.txt"
+          echo "${RUNNER_TEMP}/zizmor/bin" >> "${GITHUB_PATH}"
+
+      - name: Audit the workflows
+        # --offline: the audits that go online ask the advisory databases about
+        # the actions a workflow uses, and those answers change daily. A
+        # required check whose verdict moves overnight, for a reason that is in
+        # no pull request, is the kind scan.yml's header says does not belong
+        # on one. What is left reads the files alone, so the same tree always
+        # gets the same answer. The annotations land on the lines they name.
+        run: |
+          zizmor --version
+          zizmor --offline --format github .
