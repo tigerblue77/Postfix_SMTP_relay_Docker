@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2015-2026 Mattias Wadman, Tigerblue77 and the postfix-relay contributors
 # SPDX-License-Identifier: AGPL-3.0-only
 
-FROM debian:trixie-20260824-slim
+FROM debian:trixie-20261005-slim
 LABEL org.opencontainers.image.authors="Tigerblue77, Mattias Wadman and the postfix-relay contributors"
 LABEL org.opencontainers.image.title="Postfix SMTP relay"
 LABEL org.opencontainers.image.description="A Postfix SMTP relay for other containers to send mail through, with optional DKIM signing, SRS rewriting and SASL authentication"
