@@ -239,9 +239,9 @@ ruff check --statistics --select ALL tests # everything ruff has, for reference
 zizmor --offline --strict-collection .     # what CI runs, in plain format
 ```
 
-The last two lint the workflows and `.github/dependabot.yml`, and are
-`lint-workflows.yml`'s business rather than the ones above's: **actionlint**
-and **zizmor** are required checks. actionlint is built by `go install
+**actionlint** and **zizmor** lint the workflows and `.github/dependabot.yml`;
+they are `lint-workflows.yml`'s business rather than `lint.yml`'s, and are
+required checks. actionlint is built by `go install
 github.com/rhysd/actionlint/cmd/actionlint@<version>`, the version the workflow
 pins, which may need a newer Go than the installed one, and Go then downloads
 that toolchain itself. The binary lands in `$(go env GOPATH)/bin`, which is not
@@ -422,11 +422,11 @@ Notes a contributor will hit:
   **Build Image**, **Pytest**, **Pytest (arm64)**, **Sign-off**, **Ruff**,
   **ShellCheck**, **actionlint** and **zizmor**; a workflow can report more
   than one of them, which is what `lint.yml` does with **Ruff** and
-  **ShellCheck** and `lint-workflows.yml` with the last two. Renaming a job
-  means editing that file in the same commit, which `tests/test_ruleset.py` is
-  there to catch: a required context naming a job that no longer reports
-  blocks every pull request until someone with admin rights notices, and that
-  test fails on the rename instead.
+  **ShellCheck** and `lint-workflows.yml` with **actionlint** and **zizmor**.
+  Renaming a job means editing that file in the same commit, which
+  `tests/test_ruleset.py` is there to catch: a required context naming a job
+  that no longer reports blocks every pull request until someone with admin
+  rights notices, and that test fails on the rename instead.
 - **Every check that is not on that list is off it for a reason**, and the
   reasons are the point of writing the list down. **Test Results** is published
   by `test-results.yml` on a `workflow_run` whose job carries
