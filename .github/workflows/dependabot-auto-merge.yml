@@ -12,8 +12,8 @@
 # than by how far the version moved. Dependabot only offers a tag of the same
 # shape, so this can never move the image to another suite. What stands
 # between such a pull request and master is what stands between any other
-# change and it: the required checks below, which run the whole suite on both
-# architectures against the image the pull request builds.
+# change and it: the required checks of that ruleset, which run the whole suite
+# against the image the pull request builds.
 #
 # Requirements:
 # - "Allow auto-merge" enabled in the repository settings
@@ -93,8 +93,9 @@ jobs:
           # GITHUB_TOKEN works out of the box, but a merge performed with it
           # does not trigger the on:push ci workflow on master, so :latest is
           # not rebuilt until the next push. For a test dependency that costs
-          # nothing; for the base image it is the whole point of the bump, which
-          # then reaches master and waits there for the next push to be built
-          # and published. To get that rebuild, store a PAT as a *Dependabot*
-          # secret (Settings > Secrets > Dependabot) and use it here instead.
+          # nothing; for the base image it is the whole point of the bump,
+          # which then reaches master and waits there for the next push to be
+          # built and published. To get that rebuild, store a PAT as a
+          # *Dependabot* secret (Settings > Secrets > Dependabot) and use it
+          # here instead.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

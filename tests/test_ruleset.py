@@ -10,9 +10,8 @@ job without editing the ruleset leaves a context that never reports, and a
 context that never reports blocks every pull request until someone with admin
 rights notices. The same goes for the merge method the Dependabot auto-merge
 asks for, which the ruleset can refuse just as silently, for the updates it
-asks for it for, and for the branch
-updater, which the ruleset leaves best effort by not requiring branches to be
-up to date.
+enables auto-merge on, and for the branch updater, which the ruleset leaves
+best effort by not requiring branches to be up to date.
 
 These tests read files, and run the branch updater's step against a stubbed
 `gh`; they start no container, so they need no docker daemon.
@@ -179,8 +178,8 @@ def test_dependabot_auto_merge_covers_semver_bumps_and_the_debian_base_image():
     null, so a rule on the type alone never reached it and its pull requests
     waited for a person however green they were.
 
-    The metadata below is what the action printed for the first such pull
-    request, and for the cases that must stay out. A major bump keeps waiting.
+    The metadata below is what `fetch-metadata` reports for the base image,
+    and then the cases that must stay out. A major bump keeps waiting.
     So does anything else with a null type -- a second `FROM`, the same name in
     another directory or ecosystem -- because the rule is for the one base
     image and not for every update the semver rule cannot read.

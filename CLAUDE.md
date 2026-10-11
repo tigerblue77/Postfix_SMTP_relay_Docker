@@ -1180,17 +1180,17 @@ changing any of them.
     an `update-type` of null for it — and enables auto-merge like any other, so
     what stands between the bump and `master` are the required checks, which
     run the whole suite against the image the PR builds. The condition matches
-    the first three and not the null type, which every other update the semver
-    rule cannot read has too; `tests/test_ruleset.py` evaluates it against that
-    metadata and holds what is left to a person: a major bump, and a null-typed
-    update that is not this one (another docker dependency, the same name in
-    another directory or ecosystem). That merge is made with the
-    `GITHUB_TOKEN`, whose push starts no `ci.yml` run on `master`, so the new
-    base is in the tree and not in `:latest` until the next push to `master`
-    publishes it; a Dependabot secret holding a token that does start it is
-    what would close that, and the workflow's comment says where it goes. A
-    suite change (trixie → forky) is a deliberate edit, as it was before.
-    (commit `5de83d0`, issue #97)
+    on the name, the ecosystem and the directory and not on the null type,
+    which every other update the semver rule cannot read has too;
+    `tests/test_ruleset.py` evaluates it against that metadata and holds what
+    is left to a person: a major bump, and a null-typed update that is not this
+    one (another docker dependency, the same name in another directory or
+    ecosystem). That merge is made with the `GITHUB_TOKEN`, whose push starts
+    no `ci.yml` run on `master`, so the new base is in the tree and not in
+    `:latest` until the next push to `master` publishes it; a Dependabot secret
+    holding a token that does start it is what would close that, and the
+    workflow's comment says where it goes. A suite change (trixie → forky) is a
+    deliberate edit, as it was before. (commit `5de83d0`, issue #97)
 
 32. **`tests/mailpit.Dockerfile` is never built, and both halves of it are
     load-bearing.** It exists because Dependabot cannot read a version out of a
@@ -1241,9 +1241,9 @@ changing any of them.
     a red would never be attributable to the diff: `ci.yml` builds only what
     the tree contains, so a pull request touching `run`, a fixture or the
     README cannot introduce a Debian CVE, and its author holds no lever, the
-    remedy being a base bump, which Dependabot opens and no contributor's
-    pull request can bring about. `lint.yml`'s header already states the rule
-    this follows — an unpinnable input must not fail somebody's unrelated pull
+    remedy being a base bump, which Dependabot opens and which is no part of
+    the change under review. `lint.yml`'s header already states the rule this
+    follows — an unpinnable input must not fail somebody's unrelated pull
     request — and a
     vulnerability database is that input by construction, since pinning it is
     the same as not running the scan. Promoting this to a required check means
