@@ -486,10 +486,7 @@ def test_dependabot_cooldowns_only_use_keys_their_ecosystem_takes():
     """`semver-major-days`, `-minor-days` and `-patch-days` exist for the
     semver ecosystems only (here pip); github-actions and docker take
     `default-days` as their only day count, with `include` and `exclude` besides.
-    Dependabot's own check on a pull request that touches the file is not a
-    required one, and what Dependabot reports once the file is on master shows
-    only on the repository's Insights > Dependency graph > Dependabot page;
-    what can be checked from the file is checked here.
+
     pip's major releases wait at least as long as its minor and patch ones,
     which is the reason it has the per-level keys at all, and none waits under
     the minimum.
