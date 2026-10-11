@@ -701,12 +701,13 @@ Notes a contributor will hit:
   proposal, gets a durable reminder (an issue), not a sentence in the chat.
 - **A reply is as short as the decision it carries.** A wall of prose is
   skipped whole, which costs more than saying too little: what got skipped
-  included the question. So the verdict first, the numbers behind it, the
-  question that needs an answer, and nothing else. The reasoning that earned a
-  conclusion is not lost by leaving it out — it is in the commit message and
-  the pull request body, where a reviewer can go and find it, and repeating it
-  in the chat is the second copy that drifts. Tables and lists over paragraphs,
-  and never a restatement of what was just asked.
+  included the question. So the verdict first — for a decision to take, what
+  the maintainer gains and what it costs them, in two lines — then the
+  numbers behind it, the question that needs an answer, and nothing else. The
+  reasoning that earned a conclusion is not lost by leaving it out — it is in
+  the commit message and the pull request body, where a reviewer can go and
+  find it, and repeating it in the chat is the second copy that drifts. Tables
+  and lists over paragraphs, and never a restatement of what was just asked.
 - **A request to merge says what the pull request brings.** Merging is the
   maintainer's own act, so the ask carries what they need in order to decide,
   pull request by pull request: what it does, which goal it serves, what it
