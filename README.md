@@ -1265,24 +1265,24 @@ nothing else, so neither needs docker: [actionlint](https://github.com/rhysd/act
 for what makes a workflow wrong, such as a bad expression or an input the
 action does not have, and [zizmor](https://docs.zizmor.sh/) for what makes one
 unsafe, such as a token kept for later steps or an expression expanded into a
-script. Both run on every pull request. They are required checks once the
-ruleset recorded in `.github/rulesets/master.json` has been imported under
-Settings > Rules, and report without being required until then:
+script. Both run on every pull request:
 
 ```bash
 "$(go env GOPATH)/bin/actionlint" -shellcheck= -pyflakes=
 zizmor --offline --strict-collection .
 ```
 
-actionlint is built with `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`,
+actionlint is built with `go install github.com/rhysd/actionlint/cmd/actionlint@<version>`,
 which puts it in `$(go env GOPATH)/bin`, and that directory is not always on
-`PATH`. zizmor is installed with `pip install zizmor==1.30.1`, the versions CI pins.
-shellcheck and pyflakes are left off in actionlint on purpose, so that its
-verdict does not depend on what else happens to be installed. zizmor runs
-offline so that the same tree always gets the same answer, which costs it five
-audits, the ones that look up the actions a workflow uses: it is not a scan for
-vulnerable actions. Their configuration is `.github/actionlint.yaml` and
-`.github/zizmor.yml`, which they read by themselves.
+`PATH`. zizmor is installed with `pip install zizmor==<version>`. Both
+versions are the ones pinned in `.github/workflows/lint-workflows.yml`, which
+is what CI runs. shellcheck and pyflakes are left off in actionlint on
+purpose, so that its verdict does not depend on what else happens to be
+installed. zizmor runs offline so that the same tree always gets the same
+answer, which costs it the audits that look up the actions a workflow uses: it
+is not a scan for vulnerable actions. Their configuration is
+`.github/actionlint.yaml` and `.github/zizmor.yml`, which they read by
+themselves.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 

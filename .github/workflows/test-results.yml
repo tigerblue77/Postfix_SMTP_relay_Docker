@@ -17,7 +17,7 @@ name: Test Results
 #    downloads two artifacts and hands them to an action as files to parse;
 #  * what it takes from that run, the run id, the head sha and the event name,
 #    goes to actions as inputs and is never interpolated into a shell;
-#  * its token carries the five permissions below and nothing else;
+#  * its token carries the permissions below and nothing else;
 #  * the action that reads the artifacts is the one pinned to a commit in this
 #    tree.
 # Moving the publishing into test.yml would remove the trigger and the

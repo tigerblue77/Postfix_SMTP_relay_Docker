@@ -56,8 +56,8 @@ which is where contributor branches lived then.
 | `.github/workflows/test-results.yml` | On `workflow_run` of `test`, downloads the junit artifacts and publishes them as the **Test Results** check. |
 | `.github/workflows/lint.yml` | `name: lint`. Jobs, each pinned and checksummed: `shellcheck`, displayed as **ShellCheck**, runs `shellcheck -S error` over `run`, `healthcheck`, the session-start hook and the sign-off check — the only threshold the image scripts pass; `ruff`, displayed as **Ruff**, runs `ruff check --no-cache --select F,B tests` — pyflakes and bugbear over all the python in the tree. The linters for what ships and for the python; the workflows have their own, in `lint-workflows.yml`. Neither reads a config file. |
 | `.github/workflows/lint-workflows.yml` | `name: lint-workflows`. Jobs: `actionlint`, displayed as **actionlint**, builds a pinned version with `go install` — the Go checksum database authenticates the module — and runs `actionlint -shellcheck= -pyflakes=`, the integrations off because they only run when the runner has them and because the shell in a `run:` block is not what the **ShellCheck** gate reads; `zizmor`, displayed as **zizmor**, installs a pinned wheel into a virtualenv with `--require-hashes --only-binary :all:` and runs `zizmor --offline --strict-collection --format github .` — offline, because the online audits query advisory databases whose answers change daily, which would turn a required check red for a reason that is in no pull request, at the price of the audits that ask GitHub about the actions a workflow uses ([Lint](#lint) says what a green zizmor does not mean), and strict, because otherwise a file zizmor cannot parse is skipped with a warning and the check stays green. On `pull_request`, `workflow_dispatch` and a push to `master`, with no path filter so that both checks report on every pull request. The names are lower case on purpose: they are what the ruleset matches. |
-| `.github/actionlint.yaml` | The configuration actionlint finds by itself. Two messages about one step are ignored: the pinned actionlint's table of the popular actions' inputs predates `client-id` on `actions/create-github-app-token@v3`, so it asks for `app-id` and has never heard of the input the branch updater passes. The step is right and the table is stale; drop both lines when the pinned actionlint knows the v3 inputs. |
-| `.github/zizmor.yml` | The configuration zizmor finds by itself. `unpinned-uses` takes `ref-pin` for every action, because actions are on a version tag and not a commit hash, which is the maintainer's decision, bar the one pinned to a commit, `EnricoMi/publish-unit-test-result-action`. Nothing else is configured: `dependabot-cooldown` keeps zizmor's default threshold, which is what `dependabot.yml` sets, so the audit goes on checking that file against a number nobody here picked. Nothing is turned off. The suppression zizmor has is not here but inline, in `test-results.yml`: `# zizmor: ignore[dangerous-triggers]` on the `workflow_run` trigger, argued in that file's header. |
+| `.github/actionlint.yaml` | The configuration actionlint finds by itself. The messages about `actions/create-github-app-token@v3` in the branch updater are ignored: the pinned actionlint's table of the popular actions' inputs predates `client-id`, so it asks for `app-id` and has never heard of the input the branch updater passes. The step is right and the table is stale; drop the lines when the pinned actionlint knows the v3 inputs. |
+| `.github/zizmor.yml` | The configuration zizmor finds by itself. `unpinned-uses` takes `ref-pin` for every action, which is the maintainer's decision for version tags over commit hashes; the file argues it and [Lint](#lint) says what it lets through. Nothing else is configured: `dependabot-cooldown` keeps zizmor's default floor of seven days, so lowering the cooldown in `dependabot.yml` turns the zizmor check red. Nothing is turned off, and what zizmor is told to ignore is inline, not in this file: [Lint](#lint) says where. |
 | `.github/workflows/scan.yml` | `name: scan`. `trivy`, displayed as **Image Scan**: on a daily `schedule:` and on `workflow_dispatch`, downloads a pinned, checksummed trivy and scans the *published* image at `--ignore-unfixed --severity HIGH,CRITICAL`. The only workflow with a `schedule:`, and the only one that reports nothing on a pull request at all — `test-results.yml` has no `pull_request` trigger either, but its `workflow_run` on `test` puts a check there anyway. Files one issue when it finds something and closes it when it stops, which is the only thing in the tree that writes to the tracker; each of the first `MAX_REBUILD_ATTEMPTS` runs that finds the issue still open also dispatches **ci.yml** on `master` with `no-cache` set, *waits for that run* and re-scans what it published, so the run that applied the remedy is the one that closes the issue rather than the next morning's — see invariant 36. The waiting is why its `timeout-minutes` is the longest of any job that waits on another workflow — the branch updater's is longer, but it sleeps on a clock and waits on no workflow — and why the wait has a bound of its own well inside it: a job killed by `timeout-minutes` is *cancelled* rather than failed, and github's notification for a scheduled run fires on failure. |
 | `.github/workflows/dependabot-auto-merge.yml` | On `pull_request`, for `dependabot[bot]` only: enables auto-merge for semver-minor and semver-patch updates, by squash because `master` refuses a merge commit. Its header comment records the check names that *exist* and what it needs from the repository settings and the ruleset; which of them are *required* is the ruleset below. |
 | `.github/workflows/auto_update_pull_request_branches.yml` | On every push to `master`, and on `workflow_dispatch`; no `schedule:`. A push starts a run whose first step sleeps `QUIET_PERIOD_MINUTES` (an hour), and the next push cancels it, so only the run that follows the last push of a series wakes up and rebases every open, conflict-free, non-draft pull request that `master` left behind, so that the checks a reviewer reads describe the `master` it would land on. A pull request that conflicts gets one comment, found again by a marker so that it is written once and deleted when the conflict is gone. A run started by hand does not wait. Best effort, and not required: "Require branches to be up to date" is off, and Dependabot's pull requests are left to Dependabot, since a rebase pushed by anyone else strips the signature the auto-merge checks. Its header says why it needs a GitHub App or a personal access token rather than the `GITHUB_TOKEN`, why the conflict comment has to come from the App, and what the sleep costs. |
@@ -198,7 +198,8 @@ runs two of its steps against a stubbed `docker`, `test_scan.py`, which reads
 `.github/workflows/scan.yml`, `test_lint.py`, which compares the scripts
 `.github/workflows/lint.yml` names with the ones git tracks,
 `test_lint_workflows.py`, which holds the workflow linters' pins, flags and
-suppressions to what [Lint](#lint) says of them,
+suppressions to their workflow, their configuration files and the lists in
+the test,
 `test_claude_code_settings.py`, which reads `.claude/settings.json`, and
 `test_sign_off.py`, which builds throwaway git repositories and runs
 `.github/check_sign_off.sh` and the session-start hook against them. None of
@@ -234,8 +235,9 @@ shellcheck run healthcheck                 # everything, at the stock threshold
 ruff check --no-cache --select F,B tests   # what CI runs; exits 0
 ruff check --statistics --select ALL tests # everything ruff has, for reference
 
-"$(go env GOPATH)/bin/actionlint" -shellcheck= -pyflakes=   # what CI runs; exits 0
-zizmor --offline --strict-collection .     # what CI runs, minus the annotations
+"$(go env GOPATH)/bin/actionlint" \
+    -shellcheck= -pyflakes=                # what CI runs; exits 0
+zizmor --offline --strict-collection .     # what CI runs, in plain format
 ```
 
 The last two lint the workflows and `.github/dependabot.yml`, and are
@@ -260,15 +262,15 @@ that file's header argues for. (issue #103)
 
 What a green **zizmor** does not mean. `--offline` skips the audits that ask
 GitHub or an advisory database about the actions a workflow uses, or about the
-version comment beside a commit pin (`zizmor --offline -vv` lists them, and the
-header of `lint-workflows.yml` names them); so it is not a scan for vulnerable
-or moved actions, and a floating tag that moves is seen by nothing here. The
-`unpinned-uses` policy is `ref-pin`, which accepts any ref, a branch included.
-And the default persona hides the pedantic and auditor findings, which `zizmor
---persona auditor` prints and which are left alone: they are habits, such as a
-secret read by a step rather than a job-level environment, and expansions of
-values an attacker does not control, such as `${{ github.repository }}` in a
-`run:`.
+version comment beside a commit pin (`zizmor --offline -vv` lists them); so it
+is not a scan for vulnerable or moved actions, and a floating tag that moves is
+seen by nothing here. The `unpinned-uses` policy is `ref-pin`, which accepts
+any ref, a branch included. And the default persona hides the pedantic and
+auditor findings, which `zizmor --persona auditor` prints and which are left
+alone on purpose: some are habits, such as a secret read by a step rather than
+a job-level environment, or an expansion of a value an attacker does not
+control, such as `${{ github.repository }}` in a `run:`; others are the write
+permissions a workflow grants at the top because the jobs in it need them.
 
 `run` and `healthcheck` are the two scripts that go into the image, and
 `.github/workflows/lint.yml` gates them at `-S error` on every pull request —
@@ -360,7 +362,7 @@ display `name:`, so on an ordinary pull request it appears as a skipped
 | **ShellCheck** | `lint.yml` | Downloads shellcheck at the version and sha256 pinned in the job's `env:`, then `shellcheck -S error` over `run`, `healthcheck`, `.claude/hooks/session-start.sh` and `.github/check_sign_off.sh`. Seconds, no docker. See [Lint](#lint) for why that threshold and not a stricter one. |
 | **Ruff** | `lint.yml` | The same shape, one job over: downloads ruff at the version and sha256 pinned in the job's `env:`, then `ruff check --no-cache --select F,B tests`. Seconds, no docker. See [Lint](#lint) for why that selection and not a wider one, and why it is spelled out rather than inherited. |
 | **actionlint** | `lint-workflows.yml` | Builds actionlint at the pinned version with `go install` and runs `actionlint -shellcheck= -pyflakes=` over the workflows. Catches what makes a workflow wrong — a bad expression, an unknown input, a misspelt context. See [Lint](#lint). |
-| **zizmor** | `lint-workflows.yml` | Installs zizmor at the pinned version from the hash-checked wheel and runs `zizmor --offline --strict-collection --format github .` over the workflows and `dependabot.yml`. Catches what makes one unsafe: a token kept for later steps, an expression expanded into a script, a missing cooldown. Offline, so that the same tree always gets the same answer, which costs the audits that query GitHub: it is not a scan for vulnerable actions. See [Lint](#lint). |
+| **zizmor** | `lint-workflows.yml` | Installs zizmor at the pinned version from the hash-checked wheel and runs `zizmor --offline --strict-collection --format github .` over the workflows and `dependabot.yml`. Catches what makes one unsafe: a token kept for later steps, an expression expanded into a script, a missing cooldown. Offline, so that the same tree always gets the same answer; [Lint](#lint) says what that leaves out. |
 | **Sign-off** | `sign_off.yml` | Runs `.github/check_sign_off.sh` over the pull request's commits: each needs a `Signed-off-by`, and one authored by the agent needs it to name the maintainer. Seconds, no docker. See [Conventions](#conventions). |
 | **Test Results** | `test-results.yml` | Runs on `workflow_run` of `test`, downloads the junit artifacts and publishes them onto the PR. |
 
@@ -551,11 +553,9 @@ Notes a contributor will hit:
   names the directory. Do not widen either as a side effect of an unrelated
   change: `-S warning` fails on master, and every ruff selection past `F`
   costs edits to files that are not wrong. The yaml of the workflows and
-  `dependabot.yml` is **actionlint**'s and **zizmor**'s: zizmor at its default
-  persona and threshold bar the one `unpinned-uses` policy of
-  `.github/zizmor.yml`, actionlint with its shellcheck and pyflakes
-  integrations off and the ignore lines of `.github/actionlint.yaml`. Both are
-  clean on `master`, so a finding on a pull request is that pull request's own.
+  `dependabot.yml` is **actionlint**'s and **zizmor**'s, as [Lint](#lint)
+  says; both are pinned, so a finding on a pull request is that pull request's
+  own.
 
 ## Conventions
 

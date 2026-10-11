@@ -33,19 +33,19 @@ permissions:
 # steps, an expression expanded into a script, a permission nobody asked for.
 #
 # Both are pinned, and nothing bumps the pins; moving to a newer one is a
-# deliberate edit, and so is every suppression, of which there are three --
-# .github/actionlint.yaml and .github/zizmor.yml say which and why, and
+# deliberate edit, and so is every suppression: .github/actionlint.yaml holds
+# actionlint's, zizmor's are comments in the workflow they sit in, and
 # tests/test_lint_workflows.py fails when the list changes without being edited
 # there. A linter that moves would fail somebody's unrelated pull request on the
 # day it ships a new check, which is what lint.yml pins its own for.
 #
 # What a green zizmor does NOT mean. It runs --offline, and offline zizmor skips
-# five audits (zizmor -vv lists them): impostor-commit, known-vulnerable-actions,
-# ref-confusion, stale-action-refs and ref-version-mismatch. Those are the ones
-# that ask GitHub or an advisory database about the actions a workflow uses, or
-# about the version comment beside a commit pin, and their answers change daily,
-# so a required check that depended on them could go red for a reason that is in
-# no pull request. So this is not a scan for vulnerable or moved actions.
+# the audits that ask GitHub or an advisory database about the actions a
+# workflow uses, such as known-vulnerable-actions and impostor-commit, or about
+# the version comment beside a commit pin (zizmor -vv lists them). Their answers
+# change daily, so a required check that depended on them could go red for a
+# reason that is in no pull request. So this is not a scan for vulnerable or
+# moved actions.
 # Two more limits: the unpinned-uses policy is ref-pin, which accepts any ref, a
 # branch such as @main included, so it enforces that an action has a ref and not
 # that the ref is a version tag; and the default persona leaves out the pedantic

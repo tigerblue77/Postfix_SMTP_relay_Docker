@@ -125,7 +125,7 @@ def test_zizmor_is_pinned_by_hash_and_audits_offline_and_strictly():
     changes daily, which would turn a required check red for reasons that are in
     no pull request. And it is `--strict-collection`: without it a file zizmor
     cannot parse is skipped with a warning and the check stays green, and
-    `dependabot.yml` is read by zizmor and by nothing else here.
+    `dependabot.yml` is among the files it collects.
     """
     job = jobs()["zizmor"]
     env = job["env"]
@@ -157,9 +157,8 @@ def test_the_workflow_linters_let_through_only_what_is_argued_for():
     into a suppression without anyone adding an `ignore`: `ref-pin` is the least
     that refuses an action with no ref at all, and `any` would stop
     `unpinned-uses` finding anything. Nothing else may be configured: in
-    particular `dependabot-cooldown` keeps its default threshold of seven days,
-    which is what `dependabot.yml` sets, so that the audit goes on checking that
-    file against a number nobody here picked.
+    particular `dependabot-cooldown` keeps zizmor's default floor of seven
+    days, so a cooldown under it in `dependabot.yml` turns the zizmor job red.
     """
     actionlint = yaml.safe_load(ACTIONLINT_CONFIG.read_text())
     assert set(actionlint) == {"paths"}, f"actionlint.yaml has more than paths: {sorted(actionlint)}"
@@ -206,7 +205,7 @@ def test_the_workflow_run_ignore_still_has_what_justifies_it():
     that trigger and no other; its job checks out nothing and runs no script,
     so nothing taken from the artifacts of the triggering run is ever executed,
     and no local action (`uses: ./...`, which would need a checkout) either; and
-    its token carries the five permissions the header counts and nothing else.
+    its token carries the permissions the header argues for and nothing else.
     """
     workflow = yaml.safe_load(TEST_RESULTS.read_text())
     assert set(workflow[True]) == {"workflow_run"}, (
@@ -222,7 +221,7 @@ def test_the_workflow_run_ignore_still_has_what_justifies_it():
         "contents": "read",
         "issues": "read",
         "actions": "read",
-    }, f"the job's token is no longer the five permissions the header counts: {job['permissions']}"
+    }, f"the job's token is no longer what the header argues for: {job['permissions']}"
     assert "container" not in job and "services" not in job, "the job runs in something other than the runner"
     for step in job["steps"]:
         assert "run" not in step, (
