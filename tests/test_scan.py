@@ -303,7 +303,7 @@ def test_every_workflow_states_what_its_token_may_do():
 # Checkouts that keep the job token for the steps after them, as
 # {(file, job, step): why}, one entry per step: a job with two checkouts needs
 # two entries, and the one that is not listed is still refused. The step is its
-# `name:`, or "step N" when it has none. Empty, and meant to stay so: a checkout
+# `name:`, or "step N" when it has none. Meant to stay short: a checkout
 # belongs here only when a later step of the same job runs `git push`, or a
 # `git fetch` through the remote, and has nothing else to authenticate with. The
 # reason says which step, so that the next person to touch that job knows what
@@ -380,12 +380,13 @@ def test_every_checkout_drops_the_job_token_or_says_which_step_needs_it():
     step inherits it. That is all it does: a step that names
     `secrets.GITHUB_TOKEN`, a registry login for one, still has the token.
     zizmor's `artipacked` audit flags the default however the action stores it.
-    Nothing here needs the credential the checkout sets up: no
-    job with one pushes or fetches through git, the registry logins are the
-    actions' own, the `gh` steps carry their own `GH_TOKEN`, and the one
-    `git ls-remote`, in `ci.yml`'s promote job, runs in a job with no checkout at
-    all. So each checkout sets `persist-credentials: false`, and the exceptions
-    are PERSISTED_CHECKOUTS above, one step each, with the reason written next to
+    What needs the credential the checkout sets up is a later step of the same
+    job that pushes, or fetches through the remote, with nothing else to
+    authenticate with. A registry login names the token itself, a `gh` step
+    carries its own `GH_TOKEN`, and a `git ls-remote` in a job with no
+    checkout, as in `ci.yml`'s promote job, has no checkout to take one from.
+    So each checkout sets `persist-credentials: false`, and the exceptions are
+    PERSISTED_CHECKOUTS above, one step each, with the reason written next to
     it.
     """
     assert checkout_steps(REPO_ROOT), "no actions/checkout step found at all; the walk is broken"

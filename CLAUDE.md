@@ -518,8 +518,8 @@ Notes a contributor will hit:
   `git fetch` through the remote, with nothing else to authenticate with.
   `tests/test_scan.py` fails on a checkout, in a workflow or in a composite
   action anywhere in the tree, that neither sets it nor is on the short list
-  there, one step each with the reason it needs the credential. The one
-  `git ls-remote`, in **Publish latest**, runs in a job with no checkout and is
+  there, one step each with the reason it needs the credential. A
+  `git ls-remote` in a job that has no checkout, as in **Publish latest**, is
   not such a step. (issue #101)
 - **One action is pinned to a commit**, `EnricoMi/publish-unit-test-result-action`
   in `test-results.yml`; everything else is on a major tag, and Dependabot's
