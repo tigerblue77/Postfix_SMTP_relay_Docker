@@ -11,11 +11,13 @@ context that never reports blocks every pull request until someone with admin
 rights notices. The same goes for the merge method the Dependabot auto-merge
 asks for, which the ruleset can refuse just as silently, and for the branch
 updater, which the ruleset leaves best effort by not requiring branches to be
-up to date. They also hold every update entry of `.github/dependabot.yml` to a
-cooldown floor.
+up to date.
 
 These tests read files, and run the branch updater's step against a stubbed
 `gh`; they start no container, so they need no docker daemon.
+
+The last ones hold every update entry of `.github/dependabot.yml` to a cooldown
+floor.
 """
 
 import json
