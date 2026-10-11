@@ -199,9 +199,8 @@ runs two of its steps against a stubbed `docker`, `test_scan.py`, which reads
 `.github/workflows/lint.yml` names with the ones git tracks,
 `test_lint_workflows.py`, which holds the workflow linters' pins, flags and
 suppressions to their workflow, their configuration files and the lists in
-the test,
-`test_claude_code_settings.py`, which reads `.claude/settings.json`, and
-`test_sign_off.py`, which builds throwaway git repositories and runs
+the test, `test_claude_code_settings.py`, which reads `.claude/settings.json`,
+and `test_sign_off.py`, which builds throwaway git repositories and runs
 `.github/check_sign_off.sh` and the session-start hook against them. None of
 them starts a container. Everything else needs one. Most tests start a real
 relay; the exception is `test_image.py`, which starts none — it reads `docker
@@ -599,21 +598,20 @@ Notes a contributor will hit:
   `CONTRIBUTING.md` spells out — `run`, `healthcheck`, the session-start
   hook and `.github/check_sign_off.sh` right after the shebang, every Python
   module under `tests/`, every workflow, `.github/dependabot.yml`,
-  `.github/actionlint.yaml`, `.github/zizmor.yml` and the
-  `Dockerfile` at the top, and `CONTRIBUTING.md` and `LICENSE-COMMERCIAL.md`
-  in an HTML comment. Add it to any new source file. Nothing else carries
-  one: `tests/__init__.py` stays empty, and neither the two unbuilt anchors
-  under `tests/`, the JSON files, `pytest.ini`, `tests/requirements.txt`,
-  `.dockerignore`, `.gitignore`, `LICENSE`, `NOTICE`, `README.md`,
-  `SECURITY.md` nor this file has one. The copyright line is the same on
-  every header, the project's own: `2015-2026 Mattias Wadman, Tigerblue77 and
-  the postfix-relay contributors`. A file written elsewhere and brought in
-  here takes it too, because a line naming another project's contributors
-  says that people who never touched the file hold it, and the commercial
-  licence covers only what this project holds. The project is
-  `AGPL-3.0-only` with a commercial alternative ([LICENSE](LICENSE),
-  [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md), [NOTICE](NOTICE)); it was
-  MIT until the commit that added `NOTICE`.
+  `.github/actionlint.yaml`, `.github/zizmor.yml` and the `Dockerfile` at the
+  top, and `CONTRIBUTING.md` and `LICENSE-COMMERCIAL.md` in an HTML comment.
+  Add it to any new source file. Nothing else carries one: `tests/__init__.py`
+  stays empty, and neither the two unbuilt anchors under `tests/`, the JSON
+  files, `pytest.ini`, `tests/requirements.txt`, `.dockerignore`, `.gitignore`,
+  `LICENSE`, `NOTICE`, `README.md`, `SECURITY.md` nor this file has one. The
+  copyright line is the same on every header, the project's own: `2015-2026
+  Mattias Wadman, Tigerblue77 and the postfix-relay contributors`. A file
+  written elsewhere and brought in here takes it too, because a line naming
+  another project's contributors says that people who never touched the file
+  hold it, and the commercial licence covers only what this project holds. The
+  project is `AGPL-3.0-only` with a commercial alternative ([LICENSE](LICENSE),
+  [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md), [NOTICE](NOTICE)); it was MIT
+  until the commit that added `NOTICE`.
 - **Shell style.** The shell scripts — `run`, `healthcheck`,
   `.claude/hooks/session-start.sh` and `.github/check_sign_off.sh` — are all
   `#!/bin/bash`. No `set -e` (see below) — except in `check_sign_off.sh`,

@@ -390,10 +390,11 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-          # No pip cache, unlike the jobs of test.yml: this workflow publishes,
-          # and a cache a publishing job restores is a way for something it
-          # should not trust to reach what it publishes (zizmor's
-          # cache-poisoning). The pinned packages are cheap to download.
+          # No pip cache, unlike the native Pytest jobs of test.yml: this
+          # workflow publishes, and a cache a publishing job restores is a way
+          # for something it should not trust to reach what it publishes
+          # (zizmor's cache-poisoning). The pinned packages are cheap to
+          # download.
 
       - name: Install Python dependencies
         run: pip install -r tests/requirements.txt
@@ -481,10 +482,11 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-          # No pip cache, unlike the jobs of test.yml: this workflow publishes,
-          # and a cache a publishing job restores is a way for something it
-          # should not trust to reach what it publishes (zizmor's
-          # cache-poisoning). The pinned packages are cheap to download.
+          # No pip cache, unlike the native Pytest jobs of test.yml: this
+          # workflow publishes, and a cache a publishing job restores is a way
+          # for something it should not trust to reach what it publishes
+          # (zizmor's cache-poisoning). The pinned packages are cheap to
+          # download.
 
       - name: Install Python dependencies
         run: pip install -r tests/requirements.txt

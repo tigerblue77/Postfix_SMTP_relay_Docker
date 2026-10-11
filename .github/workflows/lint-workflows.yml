@@ -22,15 +22,13 @@ permissions:
 
 # What these two gates are, and what they deliberately are not.
 #
-# The workflows are code that runs with this repository's token and its
-# registry credentials, and they had no linter: lint.yml reads the shell scripts
-# and the python, not the yaml that runs them. actionlint catches what makes a
-# workflow wrong -- a bad expression, an unknown input, a misspelt context --
-# and a workflow is where this repository has already shipped a wrong
-# expression: an "if:" comparing a skipped step's output with a number, which
-# read as true on exactly the paths where the step had not run (CLAUDE.md,
-# invariant 36). zizmor catches what makes one unsafe: a token kept for later
-# steps, an expression expanded into a script, a permission nobody asked for.
+# A workflow is code that runs with this repository's token and its registry
+# credentials, so its expressions and its permissions are linted like the rest
+# of the code: lint.yml reads the shell scripts and the python, not the yaml
+# that runs them. actionlint catches what makes a workflow wrong -- a bad
+# expression, an unknown input, a misspelt context. zizmor catches what makes
+# one unsafe: a token kept for later steps, an expression expanded into a
+# script, a permission nobody asked for.
 #
 # Both are pinned, and nothing bumps the pins; moving to a newer one is a
 # deliberate edit, and so is every suppression: .github/actionlint.yaml holds
@@ -62,15 +60,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # No later step uses git against the remote, so the checkout does not keep the job token for them.
+          # No later step uses git against the remote, so the checkout does not
+          # keep the job token for them.
           persist-credentials: false
 
       - name: Install actionlint
         # Built from source by "go install", which the runner image has. The Go
         # checksum database authenticates the module at that version, which is
-        # what a release checksum does for the linters in lint.yml. actionlint
-        # 1.7.12 needs a newer Go than the runner image may carry, and Go then
-        # fetches that toolchain itself, authenticated the same way. Into
+        # what a release checksum does for the linters in lint.yml. The pinned
+        # actionlint may need a newer Go than the runner image carries, and Go
+        # then fetches that toolchain itself, authenticated the same way. Into
         # RUNNER_TEMP, so the tree the next step reads is only what git has.
         run: |
           set -eu
@@ -102,7 +101,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # No later step uses git against the remote, so the checkout does not keep the job token for them.
+          # No later step uses git against the remote, so the checkout does not
+          # keep the job token for them.
           persist-credentials: false
 
       - name: Install zizmor
@@ -125,11 +125,11 @@ jobs:
         # required check whose verdict moves overnight, for a reason that is in
         # no pull request, is the kind scan.yml's header says does not belong
         # on one. What is left reads the files alone, so the same tree always
-        # gets the same answer; the cost is the five audits the header lists.
-        # --strict-collection because without it a file zizmor cannot parse is
-        # skipped with a warning and the check stays green, and zizmor is the
-        # only thing here that reads dependabot.yml. The annotations land on the
-        # lines they name.
+        # gets the same answer; the cost is the audits the header names, and
+        # "zizmor --offline -vv" lists the rest. --strict-collection because
+        # without it a file zizmor cannot parse is skipped with a warning and
+        # the check stays green, and dependabot.yml is among the files it
+        # collects. The annotations land on the lines they name.
         run: |
           zizmor --version
           zizmor --offline --strict-collection --format github .
