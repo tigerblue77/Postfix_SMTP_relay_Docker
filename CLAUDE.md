@@ -702,12 +702,13 @@ Notes a contributor will hit:
 - **An issue is something to do, not something to remember.** It is opened for
   work to be done, now or later, and it closes when that work is done. A
   deferral the maintainer chose is such work, and so is the follow-up of a
-  problem upstream that this repository cannot fix, which stays open until
-  upstream does. A decision, a condition to wait for, a reason for not building
-  something is never kept alive as an open issue: it is written where it will
-  be read when it matters — a line in the README, a comment above the code,
-  this file — and the issue that discussed it closes with the reasoning in its
-  description (issue #113).
+  problem in a third-party project that this repository cannot fix, which stays
+  open, labelled `waiting-on-third-party`, until it is fixed there. A decision,
+  a condition to wait for, a reason for not building something is never kept
+  alive as an open issue: it is written where it will be read when it matters —
+  a line in the README, a comment above the code, this file — and the issue
+  that discussed it closes with the reasoning in its description (issues #113
+  and #115).
 - **A reply is as short as the decision it carries.** A wall of prose is
   skipped whole, which costs more than saying too little: what got skipped
   included the question. So the verdict first — for a decision to take, what
