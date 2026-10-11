@@ -19,7 +19,8 @@ on:
   # changes, so merging anything else and rebuilding master republishes the
   # same packages. Ticking this discards the cache, which re-resolves the
   # install closure against the archive and picks up a Debian fix in minutes
-  # instead of waiting two to three weeks for the next trixie-<date>-slim tag.
+  # instead of waiting for the next trixie-<date>-slim tag, and then for the
+  # cooldown dependabot.yml sets before it proposes that tag.
   workflow_dispatch:
     inputs:
       no-cache:

@@ -416,8 +416,8 @@ def test_the_branch_updater_announces_a_conflict_once_and_forgets_it_when_it_is_
 DEPENDABOT = REPO_ROOT / ".github" / "dependabot.yml"
 # Dependabot waits three days after a release whenever an entry has no
 # `cooldown` block, and whenever a block does not say `default-days`. Seven is
-# what this repository sets instead, and what zizmor's dependabot-cooldown audit
-# asks for unless it is told otherwise.
+# what this repository sets instead, and the floor the tests below hold every
+# entry to.
 MINIMUM_COOLDOWN_DAYS = 7
 # The ecosystems whose cooldown takes a number of days per semver level; the
 # others take `default-days` as their only day count.
@@ -426,8 +426,8 @@ SEMVER_DAYS = ("semver-major-days", "semver-minor-days", "semver-patch-days")
 # Entries whose cooldown carries an `include` or an `exclude` list, as
 # {(ecosystem, directory): why}. Empty, and meant to stay so: an excluded
 # dependency is updated the day it is released, an included-only list leaves
-# every other dependency on Dependabot's three days, and the entries here are
-# the ones the auto-merge lands unattended. The Debian base image is the
+# every other dependency on Dependabot's three days, and the auto-merge lands
+# bumps of these dependencies unattended. The Debian base image is the
 # candidate that was considered and left out, for the reasons in dependabot.yml.
 COOLDOWN_LISTS = {}
 
@@ -455,8 +455,7 @@ def test_every_dependabot_update_sets_a_cooldown_of_at_least_seven_days():
 
     No entry carries an `include` or `exclude` list unless COOLDOWN_LISTS says
     why: an excluded dependency skips the cooldown altogether, which for the
-    Debian entry would mean a tag proposed, and with the auto-merge of the base
-    image merged, on the day it is published.
+    Debian entry would mean a tag proposed on the day it is published.
     """
     updates = dependabot_updates()
     for key, u in updates.items():
@@ -487,10 +486,10 @@ def test_dependabot_cooldowns_only_use_keys_their_ecosystem_takes():
     """`semver-major-days`, `-minor-days` and `-patch-days` exist for the
     semver ecosystems only (here pip); github-actions and docker take
     `default-days` as their only day count, with `include` and `exclude` besides.
-    No workflow validates the file: Dependabot's own check on a pull request
-    that touches it is not a required one, and what Dependabot reports once the
-    file is on master shows only on the repository's Insights > Dependency graph
-    > Dependabot page, so what can be checked from the file is checked here.
+    Dependabot's own check on a pull request that touches the file is not a
+    required one, and what Dependabot reports once the file is on master shows
+    only on the repository's Insights > Dependency graph > Dependabot page;
+    what can be checked from the file is checked here.
     pip's major releases wait at least as long as its minor and patch ones,
     which is the reason it has the per-level keys at all, and none waits under
     the minimum.

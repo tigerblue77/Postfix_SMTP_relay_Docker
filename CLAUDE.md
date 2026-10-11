@@ -68,7 +68,7 @@ which is where contributor branches lived then.
 | `LICENSE-COMMERCIAL.md` | The offer of a separate commercial licence, with the table of when one is and is not needed. Not itself a licence. |
 | `CONTRIBUTING.md` | The terms a contribution arrives under — AGPL to the public plus a licence to the maintainer to offer it commercially too, which is what keeps the commercial arm grantable — the Developer Certificate of Origin every commit signs off, with who signs what when an agent wrote it, and the SPDX header every source file carries. |
 | `SECURITY.md` | Where to report a vulnerability, and — the half that is actually load-bearing — what is *not* one here: the open relay default (invariant 23), no client TLS, starting as root, and a scanner row with no fixed version. Without that, a policy invites reports about behaviour the README documents as deliberate. Names no address: it points at github's private vulnerability reporting, which needs a repository setting rather than a file. |
-| `.github/dependabot.yml` | `github-actions` weekly (grouped minor/patch and major), `docker` daily for the base image, `pip` weekly for the pinned test dependencies in `tests/`, `docker` weekly on `/tests`, which covers both anchors there. Every entry sets a `cooldown` of seven days, the base image's included (pip waits longer for a major), instead of the three Dependabot applies by default: an entry without the block is not exempt, it gets those three. None excludes a dependency from it, and a security update is never delayed. Its header says what the wait covers and what it cannot hold back. No workflow validates the file (Dependabot's own check on a pull request that touches it is not required), so `tests/test_ruleset.py` pins what can be checked from it. |
+| `.github/dependabot.yml` | `github-actions` weekly (grouped minor/patch and major), `docker` daily for the base image, `pip` weekly for the pinned test dependencies in `tests/`, `docker` weekly on `/tests`, which covers both anchors there. Every entry sets a `cooldown` of seven days, the base image's included (pip waits longer for a major), instead of the three Dependabot applies by default: an entry without the block is not exempt, it gets those three. None excludes a dependency from it, and a security update is never delayed. Its header says what the wait covers and what it cannot hold back. Dependabot's own check on a pull request that touches the file is not required; `tests/test_ruleset.py` pins what can be checked from it, with seven days as the floor. |
 | `.github/rulesets/master.json` | The live `master` ruleset, "Protect master branch", in github's export/import form less the `id` and `source` fields an export adds: no deletion, no force-push, pull requests only with no approval required, a linear history, and the required status checks. Conditioned on `~DEFAULT_BRANCH` rather than a literal `refs/heads/master`, so renaming the default branch does not quietly stop gating it. `tests/test_ruleset.py` is what keeps it true; nothing else in the tree reads it. It is the record that makes "CI blocks a bad pull request" checkable instead of believed, and it is what gets imported under Settings > Rules. |
 
 There is no linter *config* for shellcheck or ruff — `lint.yml` passes both
@@ -80,8 +80,9 @@ file carries an SPDX licence header — see [Conventions](#conventions).
 
 ```
 Dockerfile ──FROM──> debian:trixie-<date>-slim
-    │                  (pinned; bumped daily by .github/dependabot.yml,
-    │                   docker ecosystem — no Bumpfile, no "# bump:" line)
+    │                  (pinned; checked daily by .github/dependabot.yml,
+    │                   docker ecosystem, and proposed once its cooldown has
+    │                   passed — no Bumpfile, no "# bump:" line)
     ├──COPY──> run          -> /root/run          <- CMD
     ├──COPY──> healthcheck  -> /root/healthcheck  <- HEALTHCHECK
     └──COPY──> LICENSE, NOTICE, LICENSE-COMMERCIAL.md -> /root/
@@ -1335,8 +1336,9 @@ changing any of them.
     a build resolves current archive versions for every package the image
     carries -- see invariant 37 for the "every" -- but `cache-from`/`cache-to`
     make that layer a cache hit until the `FROM` line moves. Without the input,
-    the only answer to a finding is to wait two to three weeks for the next
-    `trixie-<date>-slim` tag. (issue wader/postfix-relay#269)
+    the only answer to a finding is to wait for the next `trixie-<date>-slim`
+    tag and for the cooldown `dependabot.yml` sets before it proposes that tag.
+    (issue wader/postfix-relay#269)
 
 35. **The trailing underscore in `${!POSTFIX_*}` is what keeps the two
     `postconf` loops apart.** Bash's `${!prefix*}` is a literal prefix test on
