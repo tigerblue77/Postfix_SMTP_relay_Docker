@@ -28,7 +28,7 @@ permissions:
 # counter the loop body has no reason to read, and the SC2086 in healthcheck is
 # word splitting the check needs, because listening() builds
 # proc="/proc/net/tcp /proc/net/tcp6" and awk has to receive both paths.
-# CLAUDE.md's Lint section is the full list.
+# "shellcheck -f gcc run healthcheck" prints the full list.
 #
 # So this exists to keep an actual error -- an unclosed quote, a bad
 # substitution, a construct that does not do what it reads as -- out of a
