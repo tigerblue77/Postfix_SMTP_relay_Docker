@@ -49,7 +49,7 @@ permissions:
 # Two more limits: the unpinned-uses policy is ref-pin, which accepts any ref, a
 # branch such as @main included, so it enforces that an action has a ref and not
 # that the ref is a version tag; and the default persona leaves out the pedantic
-# and auditor findings, 29 on this tree, listed in CLAUDE.md.
+# and auditor findings, which "zizmor --persona auditor" prints.
 
 jobs:
   actionlint:
