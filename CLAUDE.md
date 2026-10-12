@@ -700,17 +700,19 @@ Notes a contributor will hit:
   chat is the second copy that drifts. Tables and lists over paragraphs, and
   never a restatement of what was just asked.
 - **A request to merge says what the pull request brings.** Merging is the
-  maintainer's own act, so the ask carries what they need in order to decide,
-  pull request by pull request: what it does, which goal it serves, what it
-  changes, and — whenever it changes something that runs — how to test it, as
-  the command to type or the thing to watch rather than "CI is green". What in
-  it could not be verified, and why, stays in; here that is often `master`'s
-  side of `ci.yml`, which no pull request runs, or the `arm/v7` image, which
-  only the emulated smoke tests start. Several at once come in the order they
-  want merging in: the one their dependencies impose, and where nothing imposes
-  one, the simplest first, so that each review starts from a smaller diff than
-  the last. "This is ready" makes them work all of that out from the diff,
-  which is the work the session was supposed to have already done, done twice.
+  maintainer's own act, Dependabot's minor and patch updates apart, which merge
+  themselves once CI is green (`dependabot-auto-merge.yml`), so the ask carries
+  what they need in order to decide, pull request by pull request: what it
+  does, which goal it serves, what it changes, and — whenever it changes
+  something that runs — how to test it, as the command to type or the thing to
+  watch rather than "CI is green". What in it could not be verified, and why,
+  stays in; here that is often `master`'s side of `ci.yml`, which no pull
+  request runs, or the `arm/v7` image, which only the emulated smoke tests
+  start. Several at once come in the order they want merging in: the one their
+  dependencies impose, and where nothing imposes one, the simplest first, so
+  that each review starts from a smaller diff than the last. "This is ready"
+  makes them work all of that out from the diff, which is the work the session
+  was supposed to have already done, done twice.
 - **A command handed to the maintainer is complete, quiet, and runs as it is.**
   Pasted whole, it runs: nothing to fill in by hand, no step left to infer, no
   `sudo` (the maintainer's machines have none, and they already work as root
