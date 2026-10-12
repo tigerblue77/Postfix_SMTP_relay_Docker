@@ -460,6 +460,19 @@ Notes a contributor will hit:
   not: left out, the token gets the repository's default, which no diff shows.
   A job widens it only for itself, the way the two in `ci.yml` that push the
   GHCR mirror add `packages: write`. (issue #18)
+- **Every `actions/checkout` sets `persist-credentials: false`.** By default
+  the action sets up a credential for the steps after it: a file in the
+  runner's temp directory, which `.git/config` points at with `includeIf`
+  entries. With `false` it removes that credential right after its own fetch,
+  so no later step inherits it. Only that credential goes: a step that names
+  `secrets.GITHUB_TOKEN`, a registry login for one, still has the token. A
+  checkout keeps it only when a later step of its job runs `git push`, or a
+  `git fetch` through the remote, with nothing else to authenticate with.
+  `tests/test_scan.py` fails on a checkout, in a workflow or in a composite
+  action anywhere in the tree, that neither sets it nor is on the short list
+  there, one step each with the reason it needs the credential. A
+  `git ls-remote` in a job that has no checkout, as in **Publish latest**, is
+  not such a step. (issue #101)
 - **One action is pinned to a commit**, `EnricoMi/publish-unit-test-result-action`
   in `test-results.yml`; everything else is on a major tag, and Dependabot's
   weekly `github-actions` ecosystem bumps them. Do not "normalise" that
