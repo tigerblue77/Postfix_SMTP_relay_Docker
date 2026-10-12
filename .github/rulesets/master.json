@@ -44,6 +44,10 @@
         "do_not_enforce_on_create": false,
         "required_status_checks": [
           {
+            "context": "actionlint",
+            "integration_id": 15368
+          },
+          {
             "context": "Build Image",
             "integration_id": 15368
           },
@@ -65,6 +69,10 @@
           },
           {
             "context": "Sign-off",
+            "integration_id": 15368
+          },
+          {
+            "context": "zizmor",
             "integration_id": 15368
           }
         ]
