@@ -149,6 +149,37 @@ the `postsrsd` binary. `healthcheck` is invoked by docker and directly by
 The image build and the tests both need a working Docker daemon. The tests
 build the image themselves — you never need to build it first.
 
+### What a session has
+
+A session's tools may simply not be there, and the first thing a session owes
+itself is to find out rather than assume. The session-start hook is best
+effort, as its row under [Layout](#layout) says, and installs neither linter,
+so `ruff` and `shellcheck` are whatever the image ships, at whatever version,
+and nothing checks that either is the release `lint.yml` pins by checksum,
+even when the versions match. So establish what this session has, from the
+repository root, before leaning on any of it:
+
+```bash
+docker info > /dev/null 2>&1 \
+    && echo 'docker: daemon up' || echo 'docker: no daemon'
+pytest --collect-only -q tests > /dev/null 2>&1 \
+    && echo 'pytest: collects' || echo 'pytest: does not collect'
+ruff --version; shellcheck --version | grep '^version'
+```
+
+Without the daemon, **Build Image** and every test module but the ones listed
+under [Tests](#tests) as needing none cannot run here; a `pytest` that does not
+collect is missing its dependencies or cannot import a module of the tree, and
+`pytest --collect-only -q tests` without the redirection says which; a linter
+missing, or at a version other than `RUFF_VERSION` or `SHELLCHECK_VERSION` in
+`lint.yml`, is not the **Ruff** or **ShellCheck** check, and its verdict is
+labelled with the version it ran.
+
+Then the pull request body says which checks did not run and why. Reporting a
+check as passing because it normally passes is the single failure this section
+exists to prevent: "everything passes" while a job never executed is worse than
+saying nothing.
+
 ### Tests
 
 Per [README.md](README.md#testing), in a virtualenv:
