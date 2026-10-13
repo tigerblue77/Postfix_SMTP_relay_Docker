@@ -785,6 +785,19 @@ Notes a contributor will hit:
   a line in the README, a comment above the code, this file — and the issue
   that discussed it closes with the reasoning in its description (issues #113
   and #115).
+- **Proposals belong in the chat, not in an issue comment.** The discussion
+  happens in the session, and only the agreed result lands in the repository.
+- **A tool that is turned down is recorded, with why, in the issue that
+  discussed it** — and one retired after it ran, with what running it taught.
+  Name each tool exactly (owner/repo), so it can be found again. The record
+  belongs in the description, not in a comment under it, so the next session
+  starts from it.
+- **The conversation with the maintainer is in French.** Every reply to the
+  maintainer in a session is written in French, whatever language the
+  instructions, the code and the tool output around it are in; what goes into
+  the tree and onto GitHub stays in English, as the rule on issues and pull
+  requests says. The rule on keeping a reply short holds in French as in
+  English.
 - **A reply is as short as the decision it carries.** A wall of prose is
   skipped whole, which costs more than saying too little: what got skipped
   included the question. So the verdict first — for a decision to take, what
