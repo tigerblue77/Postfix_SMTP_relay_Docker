@@ -24,6 +24,9 @@
 # - a merge method that ruleset allows: it requires a linear history, which
 #   rules out "--merge" and leaves "--squash", the one the maintainer's
 #   pull requests use too.
+# - for the merge to start the push workflows on master, the private key of
+#   the GitHub App the branch updater uses, stored as a *Dependabot* secret
+#   under the name the updater reads it by. See the token step below.
 #
 # Required checks are matched by job name, not by workflow name. The names
 # that exist are "Build Image", "Pytest", "Pytest (arm64)",
@@ -67,16 +70,58 @@ permissions:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    # Backstop. Two API calls, and nothing here should ever sit for github's
+    # Backstop. Three API calls, and nothing here should ever sit for github's
     # default six hours.
     timeout-minutes: 5
     if: github.event.pull_request.user.login == 'dependabot[bot]'
+    env:
+      # Whether the App's key is there to mint with. A secret cannot be read in
+      # an if:, so the step below reads this instead, and the key itself is
+      # only ever read by the step that mints.
+      APP_PRIVATE_KEY_SET: ${{ secrets.PULL_REQUESTS_UPDATE_APP_PRIVATE_KEY != '' }}
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # GitHub merges an auto-merge pull request in the name of whoever enabled
+      # it, and a push made with this workflow's GITHUB_TOKEN starts no
+      # workflow. Enabled with that token, a merge lands on master and nothing
+      # runs: ci.yml does not build or publish it, so :latest stays on the
+      # image before -- for the Debian base image, the whole point of the bump
+      # -- and the branch updater never hears of it either. Enabled with the
+      # GitHub App's token, the merge is the App's, and its push starts them
+      # like any other merge.
+      #
+      # A run Dependabot starts reads Dependabot secrets and never the Actions
+      # ones, so the App's private key has to be stored a second time, as a
+      # Dependabot secret, under the name the branch updater reads it by. The
+      # client ID is a variable, not a secret, and variables do reach these
+      # runs, although GitHub documents the rule for secrets only. Until the
+      # key is there, or if the variable ever stops arriving, the step is
+      # skipped and the merge below falls back to GITHUB_TOKEN, which still
+      # merges and starts nothing -- what this workflow did before the step
+      # existed.
+      #
+      # The token gets what the merge needs and nothing else (zizmor's
+      # github-app): contents and pull requests to enable auto-merge and land
+      # the squash, and workflows because a minor or patch bump of an action
+      # edits a workflow file, which a GitHub App's token can only merge with
+      # that permission. They are the three the branch updater asks the same
+      # App for. The key is read nowhere else: this job checks nothing out and
+      # runs nothing from the pull request.
+      - name: Mint an installation token, if a GitHub App is configured for Dependabot
+        id: app-token
+        if: vars.PULL_REQUESTS_UPDATE_APP_CLIENT_ID != '' && env.APP_PRIVATE_KEY_SET == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PULL_REQUESTS_UPDATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PULL_REQUESTS_UPDATE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
 
       # Squash, because master requires a linear history: a merge commit is
       # exactly what that rule refuses, so "--merge" asked for the one kind of
@@ -92,12 +137,6 @@ jobs:
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          # GITHUB_TOKEN works out of the box, but a merge performed with it
-          # does not trigger the on:push ci workflow on master, so :latest is
-          # not rebuilt until the next push. For a test dependency that costs
-          # nothing; for the base image it is the whole point of the bump,
-          # which then reaches master and waits there for the next push to be
-          # built and published. To get that rebuild, store a PAT as a
-          # *Dependabot* secret (Settings > Secrets > Dependabot) and use it
-          # here instead.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The App's token when the step above minted one, GITHUB_TOKEN
+          # otherwise; the comment above that step says what each one costs.
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}

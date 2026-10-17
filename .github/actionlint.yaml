@@ -22,3 +22,9 @@ paths:
       # when the pinned actionlint knows the v3 inputs.
       - 'missing input "app-id" which is required by action "actions/create-github-app-token@v3"'
       - 'input "client-id" is not defined in action "actions/create-github-app-token@v3"'
+  .github/workflows/dependabot-auto-merge.yml:
+    ignore:
+      # The same stale table, for the same App and the same variable: the
+      # auto-merge mints its token from it too. Drop these with the two above.
+      - 'missing input "app-id" which is required by action "actions/create-github-app-token@v3"'
+      - 'input "client-id" is not defined in action "actions/create-github-app-token@v3"'
