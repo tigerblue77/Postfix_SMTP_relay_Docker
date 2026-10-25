@@ -35,10 +35,10 @@ ZIZMOR_CONFIG = GITHUB / "zizmor.yml"
 # list means editing it here, in the same change as the file it describes, with
 # the reason where the suppression is written.
 #
-# actionlint, by file: the messages it may not report there. All are one stale
-# table entry -- its copy of actions/create-github-app-token@v3 predates the
-# action's client-id input -- met in the two workflows that mint the App's
-# token.
+# actionlint, by file: the messages it may not report there. Every one is the
+# same stale table entry -- its copy of actions/create-github-app-token@v3
+# predates the action's client-id input -- met in each workflow that mints the
+# App's token.
 ACTIONLINT_IGNORES = {
     ".github/workflows/auto_update_pull_request_branches.yml": [
         'missing input "app-id" which is required by action "actions/create-github-app-token@v3"',

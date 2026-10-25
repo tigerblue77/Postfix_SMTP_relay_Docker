@@ -234,8 +234,8 @@ def test_dependabot_auto_merge_merges_as_the_app_when_it_has_its_key():
     So the token step comes before the merge and hands it its token, is
     skipped rather than failed while the key is missing, reads the key and
     the client ID under the names the branch updater reads them by, since it
-    is the same App, and asks for the three permissions that updater asks it
-    for: the merge needs them, a minor bump of an action editing a workflow
+    is the same App, and asks for the permissions that updater asks it for:
+    the merge needs them, a minor bump of an action editing a workflow
     file, and nothing more.
     """
     job = yaml.safe_load(AUTO_MERGE.read_text())["jobs"]["auto-merge"]

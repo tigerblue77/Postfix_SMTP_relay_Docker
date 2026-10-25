@@ -70,8 +70,8 @@ permissions:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    # Backstop. Three API calls, and nothing here should ever sit for github's
-    # default six hours.
+    # Backstop. The job makes API calls and nothing else, none of which should
+    # ever sit for github's default six hours.
     timeout-minutes: 5
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     env:
@@ -109,7 +109,7 @@ jobs:
       # github-app): contents and pull requests to enable auto-merge and land
       # the squash, and workflows because a minor or patch bump of an action
       # edits a workflow file, which a GitHub App's token can only merge with
-      # that permission. They are the three the branch updater asks the same
+      # that permission. They are the ones the branch updater asks the same
       # App for. The key is read nowhere else: this job checks nothing out and
       # runs nothing from the pull request.
       - name: Mint an installation token, if a GitHub App is configured for Dependabot
