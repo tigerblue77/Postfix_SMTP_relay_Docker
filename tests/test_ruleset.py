@@ -220,15 +220,74 @@ def test_dependabot_auto_merge_covers_semver_bumps_and_the_debian_base_image():
     )
 
 
+
+def test_dependabot_auto_merge_merges_as_the_app_when_it_has_its_key():
+    """GitHub merges an auto-merge pull request in the name of whoever enabled
+    it, and a push made with the workflow's `GITHUB_TOKEN` starts no workflow.
+    Enabled with that token, a Debian base image bump reached `master` and
+    nothing built or published it, so `:latest` stayed on the image before,
+    which is the whole point of the bump. The auto-merge therefore enables it
+    with the GitHub App's token, and falls back to `GITHUB_TOKEN` only while
+    the App's key is not stored as a Dependabot secret -- the only kind of
+    secret a run Dependabot starts can read.
+
+    So the token step comes before the merge and hands it its token, is
+    skipped rather than failed while the key is missing, reads the key and
+    the client ID under the names the branch updater reads them by, since it
+    is the same App, and asks for the permissions that updater asks it for:
+    the merge needs them, a minor bump of an action editing a workflow
+    file, and nothing more.
+    """
+    job = yaml.safe_load(AUTO_MERGE.read_text())["jobs"]["auto-merge"]
+    steps = job["steps"]
+    uses = [step.get("uses", "").split("@")[0] for step in steps]
+    assert "actions/create-github-app-token" in uses, (
+        f"{AUTO_MERGE.name} enables auto-merge with GITHUB_TOKEN alone, whose "
+        "merge starts no workflow on master"
+    )
+    mint = steps[uses.index("actions/create-github-app-token")]
+    merge = next(s for s in steps if s.get("run", "").split()[:3] == ["gh", "pr", "merge"])
+    assert steps.index(mint) < steps.index(merge), "the token is minted after the merge it is for"
+    assert merge["env"]["GH_TOKEN"] == (
+        "${{ steps.%s.outputs.token || secrets.GITHUB_TOKEN }}" % mint["id"]
+    ), "the merge does not take the App's token, or has no fallback while it is missing"
+
+    assert job["env"]["APP_PRIVATE_KEY_SET"] == (
+        "${{ secrets.PULL_REQUESTS_UPDATE_APP_PRIVATE_KEY != '' }}"
+    )
+    assert "env.APP_PRIVATE_KEY_SET == 'true'" in mint["if"], (
+        "without the key the token step fails, and with it every Dependabot "
+        "merge, instead of falling back to GITHUB_TOKEN"
+    )
+    updater_mint = next(
+        step
+        for step in yaml.safe_load(UPDATER.read_text())["jobs"]["update-pull-request-branches"]["steps"]
+        if step.get("uses", "").startswith("actions/create-github-app-token@")
+    )
+    for name in ("client-id", "private-key"):
+        assert mint["with"][name] == updater_mint["with"][name], (
+            f"the {name} is read under another name than the branch updater's"
+        )
+    permissions = {k: v for k, v in mint["with"].items() if k.startswith("permission-")}
+    updater_permissions = {
+        k: v for k, v in updater_mint["with"].items() if k.startswith("permission-")
+    }
+    assert permissions == updater_permissions == {
+        "permission-contents": "write",
+        "permission-pull-requests": "write",
+        "permission-workflows": "write",
+    }, f"the App's token asks for {permissions}"
+
 def test_branches_are_not_required_to_be_up_to_date():
     """"Require branches to be up to date before merging" stays off. With it
     on, each merge leaves every other open pull request *blocked* until its
     branch is updated, and what updates them is best effort: the branch
     updater leaves alone a pull request that conflicts, one from a fork, a
-    draft and Dependabot's own, and it only hears of a Dependabot merge on the
-    next push to master made any other way, a push made with the
-    `GITHUB_TOKEN` starting no workflow. Each of those would turn from behind
-    into blocked. What the
+    draft and Dependabot's own, and a Dependabot merge made with the
+    `GITHUB_TOKEN` -- the auto-merge's fallback while the App's key is not a
+    Dependabot secret -- starts no workflow, so the updater only hears of it on
+    the next push to master made any other way. Each of those would turn from
+    behind into blocked. What the
     setting bought, a pull request tested against the master it lands on, is
     what the updater gives wherever it can reach, and is paid for after the
     merge everywhere else: **Verify Published Image** runs on every push to
@@ -237,8 +296,9 @@ def test_branches_are_not_required_to_be_up_to_date():
     checks = [r for r in ruleset()["rules"] if r["type"] == "required_status_checks"]
     assert checks[0]["parameters"]["strict_required_status_checks_policy"] is False, (
         "requiring branches to be up to date blocks every pull request the "
-        "branch updater cannot reach, and after a Dependabot merge all of them "
-        "until the next push to master made any other way"
+        "branch updater cannot reach, and after a Dependabot merge made with "
+        "the GITHUB_TOKEN all of them until the next push to master made any "
+        "other way"
     )
 
 
@@ -260,7 +320,8 @@ def test_the_branch_updater_waits_for_master_to_stay_quiet():
     there to act now.
 
     A merge made in the `GITHUB_TOKEN`'s name -- every one the Dependabot
-    auto-merge makes -- starts no workflow, so it starts no wait either; what
+    auto-merge makes while the App's key is not a Dependabot secret -- starts
+    no workflow, so it starts no wait either; what
     it leaves behind is brought level after the next push made any other way,
     and nothing is blocked meanwhile, since branches are not required to be up
     to date.

@@ -30,11 +30,12 @@ name: Auto-update pull request branches
 # and started this one 26 times in the 140 hours after it was added, between 3
 # and 8.6 hours apart, instead of hourly. What the sleep costs instead:
 #
-#  * A Dependabot update is merged in GITHUB_TOKEN's name, and a push made with
-#    that token starts no workflow, so it starts no wait either. The pull
-#    requests it leaves behind are brought level after the next push to master
-#    made any other way. Nothing is blocked meanwhile, since master does not
-#    require a branch to be up to date.
+#  * A Dependabot update merged in GITHUB_TOKEN's name starts no workflow, so
+#    it starts no wait either. dependabot-auto-merge.yml merges in the App's
+#    name instead once the App's key is also a Dependabot secret, and until
+#    then the pull requests such a merge leaves behind are brought level after
+#    the next push to master made any other way. Nothing is blocked meanwhile,
+#    since master does not require a branch to be up to date.
 #  * The job holds its runner while it sleeps: the minutes of a hosted runner
 #    cost nothing on a public repository, but the job still occupies one for
 #    the whole quiet period, against the number of jobs the account may run at
